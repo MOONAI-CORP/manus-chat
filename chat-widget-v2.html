@@ -790,7 +790,8 @@ var IMSG = {
   quickReplies: ['Shop iPhone Cases 📱', 'See Watch Bands ⌚', "What's on sale? 🔥", 'I need help choosing ✨'],
   proactiveDelay: 8000,   // ms before proactive bubble appears
   proactiveEnabled: true,
-  apiUrl: 'https://imessage-chat-widget.vercel.app'
+  apiUrl: 'https://imessage-chat-widget.vercel.app',
+  storeId: 'limited_armor'  // Change per store: limited_armor | cozy_cloud | carbon_conceptz | bagify
 };
 /* ══════════════════════════════════════════════════════════════════ */
 
@@ -939,7 +940,7 @@ function imsgShowProactive() {
   fetch(IMSG_PROACTIVE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ page_type: pageType, page_title: pageTitle })
+    body: JSON.stringify({ store_id: IMSG.storeId, page_type: pageType, page_title: pageTitle, is_return_visitor: (parseInt(localStorage.getItem('imsg_visits')||'0') > 1) })
   })
   .then(function(r) { return r.json(); })
   .then(function(data) {
@@ -1364,6 +1365,7 @@ function imsgAIReply() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages: imsgHistory,
+      store_id: IMSG.storeId,
       store_context: pageCtx,
       page_type: pageType,
       page_title: document.title || ''
