@@ -1,0 +1,1179 @@
+<!-- MOONAI Chat Widget v3 — Deterministic Orchestration Frontend
+     Architecture: Dumb renderer only. All logic lives in backend.
+     This file is the Shopify snippet. Paste into theme.liquid before </body>.
+     
+     Configuration via Shopify Theme Editor (set these Liquid variables):
+       {{ settings.moonai_store_id }}      — e.g. "limited_armor"
+       {{ settings.moonai_brand_color }}   — e.g. "#c9a84c"
+       {{ settings.moonai_agent_name }}    — e.g. "Armie"
+       {{ settings.moonai_agent_initials }} — e.g. "LA"
+       {{ settings.moonai_api_url }}       — e.g. "https://imessage-chat-widget.vercel.app"
+-->
+
+<style>
+/* ── RESET & BASE ─────────────────────────────────────────────────────────── */
+#moonai-widget * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── LAUNCHER BUTTON ─────────────────────────────────────────────────────── */
+#moonai-launcher {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--moonai-brand, #c9a84c);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+  z-index: 99998;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+#moonai-launcher:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 28px rgba(0,0,0,0.45);
+}
+#moonai-launcher svg { pointer-events: none; }
+
+/* Notification dot */
+#moonai-notif-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  background: #ff3b30;
+  border-radius: 50%;
+  border: 2px solid #1c1c1e;
+  display: none;
+}
+
+/* ── CHAT WINDOW ─────────────────────────────────────────────────────────── */
+#moonai-window {
+  position: fixed;
+  bottom: 96px;
+  right: 24px;
+  width: 375px;
+  max-width: calc(100vw - 32px);
+  height: 600px;
+  max-height: calc(100vh - 120px);
+  background: #1c1c1e;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 99999;
+  transform: translateY(20px) scale(0.95);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease;
+}
+#moonai-window.open {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* ── HEADER ──────────────────────────────────────────────────────────────── */
+#moonai-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #2c2c2e;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+#moonai-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--moonai-brand, #c9a84c);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+#moonai-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+#moonai-header-info { flex: 1; min-width: 0; }
+#moonai-agent-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.2;
+}
+#moonai-status {
+  font-size: 12px;
+  color: #30d158;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+}
+#moonai-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: #30d158;
+  border-radius: 50%;
+  display: inline-block;
+}
+#moonai-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ebebf5;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+#moonai-close-btn:hover { background: rgba(255,255,255,0.18); }
+
+/* ── MESSAGES AREA ───────────────────────────────────────────────────────── */
+#moonai-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scroll-behavior: smooth;
+}
+#moonai-messages::-webkit-scrollbar { width: 4px; }
+#moonai-messages::-webkit-scrollbar-track { background: transparent; }
+#moonai-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+/* ── MESSAGE BUBBLES ─────────────────────────────────────────────────────── */
+.moonai-msg-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  animation: moonai-fade-in 0.2s ease;
+}
+.moonai-msg-row.user { flex-direction: row-reverse; }
+
+@keyframes moonai-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.moonai-msg-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--moonai-brand, #c9a84c);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.moonai-msg-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.moonai-msg-row.user .moonai-msg-avatar { display: none; }
+
+.moonai-bubble {
+  max-width: 78%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.moonai-msg-row.agent .moonai-bubble {
+  background: #2c2c2e;
+  color: #f5f5f7;
+  border-bottom-left-radius: 4px;
+}
+.moonai-msg-row.user .moonai-bubble {
+  background: var(--moonai-brand, #c9a84c);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+/* ── TYPING INDICATOR ────────────────────────────────────────────────────── */
+#moonai-typing {
+  display: none;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 0 0 4px 0;
+}
+#moonai-typing.visible { display: flex; }
+.moonai-typing-dots {
+  background: #2c2c2e;
+  border-radius: 18px;
+  border-bottom-left-radius: 4px;
+  padding: 12px 16px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.moonai-typing-dots span {
+  width: 6px;
+  height: 6px;
+  background: #8e8e93;
+  border-radius: 50%;
+  animation: moonai-bounce 1.2s infinite;
+}
+.moonai-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.moonai-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes moonai-bounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-5px); }
+}
+
+/* ── PRODUCT CARDS ───────────────────────────────────────────────────────── */
+.moonai-cards-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 8px 2px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.moonai-cards-row::-webkit-scrollbar { display: none; }
+
+.moonai-card {
+  flex: 0 0 160px;
+  background: #2c2c2e;
+  border-radius: 14px;
+  overflow: hidden;
+  scroll-snap-align: start;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  text-decoration: none;
+  display: block;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.moonai-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.moonai-card-img-wrap {
+  position: relative;
+  width: 100%;
+  padding-top: 100%;
+  background: #3a3a3c;
+  overflow: hidden;
+}
+.moonai-card-img-wrap img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.moonai-card-img-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #636366;
+  font-size: 32px;
+}
+.moonai-card-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--moonai-brand, #c9a84c);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.moonai-card-info {
+  padding: 10px 10px 12px;
+}
+.moonai-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f5f5f7;
+  line-height: 1.35;
+  margin-bottom: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.moonai-card-prices {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.moonai-card-price {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+}
+.moonai-card-compare {
+  font-size: 12px;
+  color: #636366;
+  text-decoration: line-through;
+}
+.moonai-card-cta {
+  display: block;
+  margin: 8px 10px 10px;
+  background: var(--moonai-brand, #c9a84c);
+  color: #fff;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 0;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.moonai-card-cta:hover { opacity: 0.88; }
+
+/* ── CTA BUTTON ──────────────────────────────────────────────────────────── */
+.moonai-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--moonai-brand, #c9a84c);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 12px;
+  text-decoration: none;
+  margin-top: 6px;
+  transition: opacity 0.15s;
+}
+.moonai-cta-btn:hover { opacity: 0.88; }
+
+/* ── CHIPS ───────────────────────────────────────────────────────────────── */
+#moonai-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px 4px;
+  flex-shrink: 0;
+}
+.moonai-chip {
+  background: #2c2c2e;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #f5f5f7;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.moonai-chip:hover {
+  background: #3a3a3c;
+  border-color: var(--moonai-brand, #c9a84c);
+  transform: translateY(-1px);
+}
+.moonai-chip:active { transform: scale(0.97); }
+
+/* ── INPUT AREA ──────────────────────────────────────────────────────────── */
+#moonai-input-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 14px;
+  background: #1c1c1e;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+#moonai-input {
+  flex: 1;
+  background: #2c2c2e;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 22px;
+  padding: 10px 16px;
+  font-size: 15px;
+  color: #f5f5f7;
+  outline: none;
+  transition: border-color 0.15s;
+  resize: none;
+  min-height: 40px;
+  max-height: 100px;
+  overflow-y: auto;
+  line-height: 1.4;
+}
+#moonai-input::placeholder { color: #636366; }
+#moonai-input:focus { border-color: var(--moonai-brand, #c9a84c); }
+#moonai-send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--moonai-brand, #c9a84c);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.1s;
+}
+#moonai-send-btn:hover { opacity: 0.88; transform: scale(1.05); }
+#moonai-send-btn:active { transform: scale(0.95); }
+#moonai-send-btn svg { pointer-events: none; }
+
+/* ── PROACTIVE BUBBLE ────────────────────────────────────────────────────── */
+#moonai-proactive {
+  position: fixed;
+  bottom: 96px;
+  right: 24px;
+  max-width: 280px;
+  background: #2c2c2e;
+  border-radius: 16px;
+  border-bottom-right-radius: 4px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 99997;
+  cursor: pointer;
+  animation: moonai-slide-up 0.35s cubic-bezier(0.34,1.56,0.64,1);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+@keyframes moonai-slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#moonai-proactive-text {
+  font-size: 14px;
+  color: #f5f5f7;
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+#moonai-proactive-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.moonai-proactive-chip {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #f5f5f7;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+}
+.moonai-proactive-chip:hover { background: rgba(255,255,255,0.14); }
+#moonai-proactive-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #636366;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px;
+}
+
+/* ── MOBILE ──────────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  #moonai-window {
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+  #moonai-launcher {
+    bottom: 16px;
+    right: 16px;
+  }
+  #moonai-proactive {
+    bottom: 88px;
+    right: 16px;
+    left: 16px;
+    max-width: none;
+  }
+}
+</style>
+
+<!-- ── WIDGET HTML ─────────────────────────────────────────────────────────── -->
+<div id="moonai-widget">
+
+  <!-- Proactive bubble -->
+  <div id="moonai-proactive" style="display:none">
+    <button id="moonai-proactive-dismiss" aria-label="Dismiss">×</button>
+    <div id="moonai-proactive-text"></div>
+    <div id="moonai-proactive-chips"></div>
+  </div>
+
+  <!-- Launcher button -->
+  <button id="moonai-launcher" aria-label="Chat with us">
+    <div id="moonai-notif-dot"></div>
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+      <path d="M13 2C6.925 2 2 6.477 2 12c0 2.14.69 4.12 1.86 5.74L2.5 22.5l5.1-1.32A10.9 10.9 0 0013 22c6.075 0 11-4.477 11-10S19.075 2 13 2z" fill="white"/>
+    </svg>
+  </button>
+
+  <!-- Chat window -->
+  <div id="moonai-window" role="dialog" aria-label="Chat">
+    <!-- Header -->
+    <div id="moonai-header">
+      <div id="moonai-avatar">
+        <span id="moonai-avatar-initials">LA</span>
+      </div>
+      <div id="moonai-header-info">
+        <div id="moonai-agent-name">Armie</div>
+        <div id="moonai-status">Online now</div>
+      </div>
+      <button id="moonai-close-btn" aria-label="Close chat">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M1 1l12 12M13 1L1 13" stroke="#ebebf5" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Messages -->
+    <div id="moonai-messages">
+      <!-- Typing indicator (always last in DOM, moved by JS) -->
+      <div id="moonai-typing">
+        <div class="moonai-msg-avatar" id="moonai-typing-avatar">LA</div>
+        <div class="moonai-typing-dots">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chips -->
+    <div id="moonai-chips"></div>
+
+    <!-- Input -->
+    <div id="moonai-input-area">
+      <textarea id="moonai-input" placeholder="Message..." rows="1" aria-label="Type a message"></textarea>
+      <button id="moonai-send-btn" aria-label="Send">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M14.5 1.5L7 9M14.5 1.5L10 14.5L7 9M14.5 1.5L1.5 6L7 9" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── WIDGET SCRIPT ───────────────────────────────────────────────────────── -->
+<script>
+(function() {
+  'use strict';
+
+  // ── CONFIG (injected by Shopify Liquid or defaults) ──────────────────────
+  var CFG = {
+    storeId:    (window.MOONAI_STORE_ID    || 'limited_armor'),
+    apiUrl:     (window.MOONAI_API_URL     || 'https://imessage-chat-widget.vercel.app'),
+    brandColor: (window.MOONAI_BRAND_COLOR || '#c9a84c'),
+    agentName:  (window.MOONAI_AGENT_NAME  || 'Armie'),
+    agentInitials: (window.MOONAI_AGENT_INITIALS || 'LA'),
+    agentImage: (window.MOONAI_AGENT_IMAGE || ''),
+    // Proactive timing
+    proactiveDelay: 4000,    // ms before showing proactive bubble
+    proactiveScrollPct: 40,  // % page scrolled to trigger proactive
+    proactiveExitIntent: true,
+  };
+
+  // ── SESSION STATE ────────────────────────────────────────────────────────
+  var SESSION_KEY = 'moonai_session_' + CFG.storeId;
+  var state = loadSession();
+
+  function loadSession() {
+    try {
+      var raw = sessionStorage.getItem(SESSION_KEY);
+      if (raw) {
+        var s = JSON.parse(raw);
+        // Validate session is from same store
+        if (s.storeId === CFG.storeId) return s;
+      }
+    } catch(e) {}
+    return {
+      storeId: CFG.storeId,
+      phase: 'open',
+      knownAttributes: {},
+      messages: [],
+      isOpen: false,
+      proactiveShown: false,
+      upsellShown: false,
+      startedAt: Date.now(),
+    };
+  }
+
+  function saveSession() {
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
+    } catch(e) {}
+  }
+
+  // ── PAGE CONTEXT READER ──────────────────────────────────────────────────
+  function getPageContext() {
+    var url = window.location.href;
+    var path = window.location.pathname;
+    var title = document.title || '';
+
+    var pageType = 'homepage';
+    if (path.includes('/products/')) pageType = 'product';
+    else if (path.includes('/collections/')) pageType = 'collection';
+    else if (path.includes('/cart')) pageType = 'cart';
+    else if (path.includes('/pages/')) pageType = 'page';
+    else if (path.includes('/blogs/')) pageType = 'blog';
+    else if (path === '/' || path === '') pageType = 'homepage';
+
+    // Product title from page
+    var productTitle = '';
+    if (pageType === 'product') {
+      var h1 = document.querySelector('h1');
+      if (h1) productTitle = h1.textContent.trim();
+    }
+
+    // Cart detection
+    var cartPresent = false;
+    try {
+      // Shopify cart API
+      var cartCount = document.querySelector('[data-cart-count], .cart-count, #cart-count');
+      if (cartCount && parseInt(cartCount.textContent) > 0) cartPresent = true;
+    } catch(e) {}
+
+    return {
+      pageType: pageType,
+      pageTitle: productTitle || title,
+      currentUrl: url,
+      cartPresent: cartPresent,
+    };
+  }
+
+  // ── DOM REFS ─────────────────────────────────────────────────────────────
+  var $launcher   = document.getElementById('moonai-launcher');
+  var $window     = document.getElementById('moonai-window');
+  var $messages   = document.getElementById('moonai-messages');
+  var $chips      = document.getElementById('moonai-chips');
+  var $input      = document.getElementById('moonai-input');
+  var $sendBtn    = document.getElementById('moonai-send-btn');
+  var $closeBtn   = document.getElementById('moonai-close-btn');
+  var $typing     = document.getElementById('moonai-typing');
+  var $typingAvatar = document.getElementById('moonai-typing-avatar');
+  var $proactive  = document.getElementById('moonai-proactive');
+  var $proText    = document.getElementById('moonai-proactive-text');
+  var $proChips   = document.getElementById('moonai-proactive-chips');
+  var $proDismiss = document.getElementById('moonai-proactive-dismiss');
+  var $notifDot   = document.getElementById('moonai-notif-dot');
+  var $agentName  = document.getElementById('moonai-agent-name');
+  var $avatar     = document.getElementById('moonai-avatar');
+  var $avatarInitials = document.getElementById('moonai-avatar-initials');
+  var $typingAvatarEl = document.getElementById('moonai-typing-avatar');
+
+  // ── APPLY BRAND CONFIG ───────────────────────────────────────────────────
+  function applyBranding(config) {
+    document.documentElement.style.setProperty('--moonai-brand', config.brand_color || CFG.brandColor);
+    CFG.brandColor = config.brand_color || CFG.brandColor;
+    CFG.agentName = config.agent_name || CFG.agentName;
+    CFG.agentInitials = config.agent_initials || CFG.agentInitials;
+
+    $agentName.textContent = CFG.agentName;
+    $avatarInitials.textContent = CFG.agentInitials;
+    $typingAvatarEl.textContent = CFG.agentInitials;
+
+    if (CFG.agentImage) {
+      $avatar.innerHTML = '<img src="' + CFG.agentImage + '" alt="' + CFG.agentName + '">';
+    }
+  }
+
+  // Apply defaults immediately
+  document.documentElement.style.setProperty('--moonai-brand', CFG.brandColor);
+  $agentName.textContent = CFG.agentName;
+  $avatarInitials.textContent = CFG.agentInitials;
+  $typingAvatarEl.textContent = CFG.agentInitials;
+
+  // Fetch brand config from backend
+  fetch(CFG.apiUrl + '/config/' + CFG.storeId)
+    .then(function(r) { return r.json(); })
+    .then(function(cfg) { applyBranding(cfg); })
+    .catch(function() {});
+
+  // ── OPEN / CLOSE ─────────────────────────────────────────────────────────
+  function openChat() {
+    $window.classList.add('open');
+    state.isOpen = true;
+    $notifDot.style.display = 'none';
+    hideProactive();
+    saveSession();
+
+    // Restore messages from session
+    if (state.messages.length === 0) {
+      // First open — show greeting
+      triggerGreeting();
+    } else {
+      // Restore previous messages
+      $messages.innerHTML = '';
+      state.messages.forEach(function(msg) {
+        if (msg.type === 'agent') {
+          renderAgentMessage(msg.text, msg.products, msg.cta, false);
+        } else if (msg.type === 'user') {
+          renderUserMessage(msg.text, false);
+        }
+      });
+      renderChips(state.chips || []);
+      scrollToBottom();
+    }
+
+    // Focus input
+    setTimeout(function() { $input.focus(); }, 300);
+  }
+
+  function closeChat() {
+    $window.classList.remove('open');
+    state.isOpen = false;
+    saveSession();
+  }
+
+  $launcher.addEventListener('click', function() {
+    if ($window.classList.contains('open')) closeChat();
+    else openChat();
+  });
+  $closeBtn.addEventListener('click', closeChat);
+
+  // ── RENDER: USER MESSAGE ─────────────────────────────────────────────────
+  function renderUserMessage(text, save) {
+    if (save === undefined) save = true;
+    var row = document.createElement('div');
+    row.className = 'moonai-msg-row user';
+    row.innerHTML = '<div class="moonai-bubble">' + escHtml(text) + '</div>';
+    $messages.insertBefore(row, $typing);
+    scrollToBottom();
+    if (save) {
+      state.messages.push({ type: 'user', text: text });
+      saveSession();
+    }
+  }
+
+  // ── RENDER: AGENT MESSAGE ────────────────────────────────────────────────
+  function renderAgentMessage(text, products, cta, save) {
+    if (save === undefined) save = true;
+    var row = document.createElement('div');
+    row.className = 'moonai-msg-row agent';
+
+    var avatarHtml = '<div class="moonai-msg-avatar">';
+    if (CFG.agentImage) {
+      avatarHtml += '<img src="' + CFG.agentImage + '" alt="' + CFG.agentName + '">';
+    } else {
+      avatarHtml += CFG.agentInitials;
+    }
+    avatarHtml += '</div>';
+
+    row.innerHTML = avatarHtml + '<div class="moonai-bubble">' + escHtml(text) + '</div>';
+    $messages.insertBefore(row, $typing);
+
+    // Product cards
+    if (products && products.length > 0) {
+      var cardsRow = document.createElement('div');
+      cardsRow.className = 'moonai-msg-row agent';
+      cardsRow.innerHTML = avatarHtml + '<div style="flex:1;min-width:0">' + renderProductCards(products) + '</div>';
+      $messages.insertBefore(cardsRow, $typing);
+    }
+
+    // CTA button
+    if (cta && cta.url && cta.label) {
+      var ctaRow = document.createElement('div');
+      ctaRow.className = 'moonai-msg-row agent';
+      ctaRow.innerHTML = avatarHtml + '<a class="moonai-cta-btn" href="' + escAttr(cta.url) + '" target="_blank" rel="noopener">' + escHtml(cta.label) + ' →</a>';
+      $messages.insertBefore(ctaRow, $typing);
+    }
+
+    scrollToBottom();
+
+    if (save) {
+      state.messages.push({ type: 'agent', text: text, products: products, cta: cta });
+      saveSession();
+    }
+  }
+
+  // ── RENDER: PRODUCT CARDS ────────────────────────────────────────────────
+  function renderProductCards(products) {
+    if (!products || products.length === 0) return '';
+    var html = '<div class="moonai-cards-row">';
+    products.forEach(function(p) {
+      var imgHtml = p.image
+        ? '<img src="' + escAttr(p.image) + '" alt="' + escAttr(p.title) + '" loading="lazy">'
+        : '<div class="moonai-card-img-placeholder">📦</div>';
+      var badgeHtml = p.badge ? '<div class="moonai-card-badge">' + escHtml(p.badge) + '</div>' : '';
+      var compareHtml = p.compareAtPrice ? '<span class="moonai-card-compare">' + escHtml(p.compareAtPrice) + '</span>' : '';
+      html += '<a class="moonai-card" href="' + escAttr(p.url) + '" target="_blank" rel="noopener">'
+        + '<div class="moonai-card-img-wrap">' + imgHtml + badgeHtml + '</div>'
+        + '<div class="moonai-card-info">'
+        + '<div class="moonai-card-title">' + escHtml(p.title) + '</div>'
+        + '<div class="moonai-card-prices">'
+        + '<span class="moonai-card-price">' + escHtml(p.price) + '</span>'
+        + compareHtml
+        + '</div>'
+        + '</div>'
+        + '<span class="moonai-card-cta">Shop Now</span>'
+        + '</a>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  // ── RENDER: CHIPS ────────────────────────────────────────────────────────
+  function renderChips(chips) {
+    $chips.innerHTML = '';
+    if (!chips || chips.length === 0) return;
+    chips.forEach(function(chip) {
+      var btn = document.createElement('button');
+      btn.className = 'moonai-chip';
+      btn.textContent = chip.label;
+      btn.dataset.chipId = chip.id;
+      btn.addEventListener('click', function() {
+        handleChip(chip.id, chip.label);
+      });
+      $chips.appendChild(btn);
+    });
+    if (chips.length > 0) {
+      state.chips = chips;
+      saveSession();
+    }
+  }
+
+  // ── TYPING INDICATOR ─────────────────────────────────────────────────────
+  function showTyping() {
+    $typing.classList.add('visible');
+    $messages.insertBefore($typing, null); // move to end
+    scrollToBottom();
+  }
+  function hideTyping() {
+    $typing.classList.remove('visible');
+  }
+
+  // ── SCROLL ───────────────────────────────────────────────────────────────
+  function scrollToBottom() {
+    requestAnimationFrame(function() {
+      $messages.scrollTop = $messages.scrollHeight;
+    });
+  }
+
+  // ── API CLIENT ───────────────────────────────────────────────────────────
+  function sendToApi(message, callback) {
+    var ctx = getPageContext();
+    var payload = {
+      store_id: CFG.storeId,
+      message: message,
+      current_phase: state.phase,
+      known_attributes: state.knownAttributes,
+      page_type: ctx.pageType,
+      page_title: ctx.pageTitle,
+      upsell_shown: state.upsellShown,
+    };
+
+    fetch(CFG.apiUrl + '/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) { callback(null, data); })
+    .catch(function(err) { callback(err, null); });
+  }
+
+  // ── HANDLE SEND ──────────────────────────────────────────────────────────
+  function handleSend(text) {
+    text = text.trim();
+    if (!text) return;
+
+    $input.value = '';
+    $input.style.height = 'auto';
+    $chips.innerHTML = '';
+
+    renderUserMessage(text);
+    showTyping();
+
+    // Disable input while waiting
+    $input.disabled = true;
+    $sendBtn.disabled = true;
+
+    sendToApi(text, function(err, data) {
+      hideTyping();
+      $input.disabled = false;
+      $sendBtn.disabled = false;
+      $input.focus();
+
+      if (err || !data) {
+        renderAgentMessage("Sorry, I'm having a moment. Try again in a second! 😅", [], null);
+        return;
+      }
+
+      // Update state from backend response
+      state.phase = data.phase || state.phase;
+      state.knownAttributes = data.knownAttributes || state.knownAttributes;
+      if (data.phase === 'upsell') state.upsellShown = true;
+      saveSession();
+
+      // Render response
+      renderAgentMessage(data.message, data.productCards, data.cta);
+      renderChips(data.chips);
+    });
+  }
+
+  // ── HANDLE CHIP ──────────────────────────────────────────────────────────
+  function handleChip(chipId, chipLabel) {
+    $chips.innerHTML = '';
+    renderUserMessage(chipLabel);
+    showTyping();
+    $input.disabled = true;
+    $sendBtn.disabled = true;
+
+    // Send chip ID as the message (backend maps chip IDs to intents)
+    sendToApi(chipId, function(err, data) {
+      hideTyping();
+      $input.disabled = false;
+      $sendBtn.disabled = false;
+
+      if (err || !data) {
+        renderAgentMessage("Sorry, something went wrong. Try again!", [], null);
+        return;
+      }
+
+      state.phase = data.phase || state.phase;
+      state.knownAttributes = data.knownAttributes || state.knownAttributes;
+      if (data.phase === 'upsell') state.upsellShown = true;
+      saveSession();
+
+      renderAgentMessage(data.message, data.productCards, data.cta);
+      renderChips(data.chips);
+    });
+  }
+
+  // ── GREETING ─────────────────────────────────────────────────────────────
+  function triggerGreeting() {
+    var ctx = getPageContext();
+    var payload = {
+      store_id: CFG.storeId,
+      page_type: ctx.pageType,
+      page_title: ctx.pageTitle,
+      is_return_visitor: isReturnVisitor(),
+      cart_present: ctx.cartPresent,
+    };
+
+    showTyping();
+
+    fetch(CFG.apiUrl + '/proactive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      hideTyping();
+      renderAgentMessage(data.message, [], null);
+      renderChips(data.chips);
+      state.phase = data.phase || 'open';
+      saveSession();
+    })
+    .catch(function() {
+      hideTyping();
+      renderAgentMessage(
+        'Hey! Welcome — I\'m ' + CFG.agentName + ', your personal stylist. What phone do you have?',
+        [], null
+      );
+      renderChips([
+        { id: 'shop_now', label: 'Shop now' },
+        { id: 'see_sale', label: 'See sale' },
+        { id: 'need_help', label: 'Help me choose' },
+      ]);
+    });
+  }
+
+  // ── PROACTIVE BUBBLE ─────────────────────────────────────────────────────
+  function showProactive(message, chips) {
+    if (state.proactiveShown || state.isOpen) return;
+    state.proactiveShown = true;
+    saveSession();
+
+    $proText.textContent = message;
+    $proChips.innerHTML = '';
+    chips.forEach(function(chip) {
+      var btn = document.createElement('button');
+      btn.className = 'moonai-proactive-chip';
+      btn.textContent = chip.label;
+      btn.addEventListener('click', function() {
+        hideProactive();
+        openChat();
+        // Small delay to let chat open, then send chip
+        setTimeout(function() { handleChip(chip.id, chip.label); }, 400);
+      });
+      $proChips.appendChild(btn);
+    });
+
+    $proactive.style.display = 'block';
+    $notifDot.style.display = 'block';
+
+    // Click bubble to open chat
+    $proText.addEventListener('click', function() {
+      hideProactive();
+      openChat();
+    });
+  }
+
+  function hideProactive() {
+    $proactive.style.display = 'none';
+    $notifDot.style.display = 'none';
+  }
+
+  $proDismiss.addEventListener('click', function(e) {
+    e.stopPropagation();
+    hideProactive();
+  });
+
+  // ── PROACTIVE TRIGGER MANAGER ────────────────────────────────────────────
+  function initProactiveTriggers() {
+    if (state.proactiveShown || state.isOpen) return;
+
+    var ctx = getPageContext();
+
+    // Fetch proactive message from backend
+    function fetchAndShow() {
+      if (state.proactiveShown || state.isOpen) return;
+      var payload = {
+        store_id: CFG.storeId,
+        page_type: ctx.pageType,
+        page_title: ctx.pageTitle,
+        is_return_visitor: isReturnVisitor(),
+        cart_present: ctx.cartPresent,
+      };
+      fetch(CFG.apiUrl + '/proactive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        showProactive(data.message, data.chips || []);
+      })
+      .catch(function() {});
+    }
+
+    // Trigger 1: Time delay
+    setTimeout(fetchAndShow, CFG.proactiveDelay);
+
+    // Trigger 2: Scroll depth
+    var scrollTriggered = false;
+    window.addEventListener('scroll', function() {
+      if (scrollTriggered || state.proactiveShown || state.isOpen) return;
+      var scrollPct = (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100;
+      if (scrollPct >= CFG.proactiveScrollPct) {
+        scrollTriggered = true;
+        fetchAndShow();
+      }
+    }, { passive: true });
+
+    // Trigger 3: Exit intent (desktop only)
+    if (CFG.proactiveExitIntent && !isMobile()) {
+      document.addEventListener('mouseleave', function(e) {
+        if (e.clientY < 10 && !state.proactiveShown && !state.isOpen) {
+          fetchAndShow();
+        }
+      });
+    }
+  }
+
+  // ── RETURN VISITOR DETECTION ─────────────────────────────────────────────
+  function isReturnVisitor() {
+    try {
+      var key = 'moonai_visited_' + CFG.storeId;
+      var visited = localStorage.getItem(key);
+      localStorage.setItem(key, Date.now().toString());
+      return !!visited;
+    } catch(e) { return false; }
+  }
+
+  // ── UTILS ────────────────────────────────────────────────────────────────
+  function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function escAttr(str) { return escHtml(str); }
+  function isMobile() { return window.innerWidth <= 480; }
+
+  // ── INPUT HANDLERS ───────────────────────────────────────────────────────
+  $sendBtn.addEventListener('click', function() {
+    handleSend($input.value);
+  });
+
+  $input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend($input.value);
+    }
+  });
+
+  // Auto-resize textarea
+  $input.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+  });
+
+  // ── KEYBOARD SHORTCUT ────────────────────────────────────────────────────
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && $window.classList.contains('open')) {
+      closeChat();
+    }
+  });
+
+  // ── INIT ─────────────────────────────────────────────────────────────────
+  // Restore open state from session
+  if (state.isOpen) {
+    openChat();
+  }
+
+  // Start proactive triggers
+  initProactiveTriggers();
+
+})();
+</script>

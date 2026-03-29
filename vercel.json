@@ -24,13 +24,17 @@
       "dest": "api/index.py"
     },
     {
+      "src": "/config/(.*)",
+      "dest": "api/index.py"
+    },
+    {
       "src": "/(.*)",
       "dest": "public/$1"
     }
   ],
   "headers": [
     {
-      "source": "/(chat|health|proactive)",
+      "source": "/(.*)",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
