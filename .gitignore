@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.env.*
+nohup.out
+*.log
+*.zip
+.DS_Store
+node_modules/
+.vercel
+shopify_sync.py

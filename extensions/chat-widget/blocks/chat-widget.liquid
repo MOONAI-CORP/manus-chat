@@ -1,0 +1,263 @@
+{% comment %}
+  ══════════════════════════════════════════════════════════════════════
+  MOONAI Chat Widget — Shopify Theme App Extension Block
+  Edit all settings in Shopify Admin → Online Store → Themes → Customize
+  ══════════════════════════════════════════════════════════════════════
+{% endcomment %}
+
+{% if block.settings.widget_enabled %}
+
+<link rel="stylesheet" href="{{ 'chat-widget.css' | asset_url }}">
+
+<div id="imsg-root"
+  data-brand-color="{{ block.settings.brand_color }}"
+  data-accent-color="{{ block.settings.accent_color }}"
+  data-agent-name="{{ block.settings.agent_name }}"
+  data-agent-initials="{{ block.settings.agent_initials }}"
+  data-brand-name="{{ block.settings.brand_name }}"
+  data-greeting="{{ block.settings.greeting }}"
+  data-api-url="{{ block.settings.api_url }}"
+  data-proactive-delay="{{ block.settings.proactive_delay }}"
+  data-launcher-bg="{{ block.settings.launcher_bg }}"
+  {% if block.settings.agent_photo != blank %}
+  data-agent-photo="{{ block.settings.agent_photo | img_url: '120x120', crop: 'center' }}"
+  {% endif %}
+  {% if block.settings.brand_logo != blank %}
+  data-brand-logo="{{ block.settings.brand_logo | img_url: '300x80', crop: 'center' }}"
+  {% endif %}
+  {{ block.shopify_attributes }}
+></div>
+
+<!-- Proactive Bubble -->
+<div id="imsg-proactive-bubble" role="complementary" aria-label="Chat suggestion">
+  <div class="imsg-proactive-avatar" id="imsg-pb-avatar">
+    {% if block.settings.agent_photo != blank %}
+    <img src="{{ block.settings.agent_photo | img_url: '120x120', crop: 'center' }}" alt="{{ block.settings.agent_name }}" />
+    {% else %}
+    <span id="imsg-pb-initials">{{ block.settings.agent_initials }}</span>
+    {% endif %}
+  </div>
+  <div class="imsg-proactive-content" onclick="imsgOpenFromProactive()">
+    <p class="imsg-proactive-text" id="imsg-proactive-text">{{ block.settings.greeting }}</p>
+    <div class="imsg-proactive-chips" id="imsg-proactive-chips"></div>
+  </div>
+  <button class="imsg-proactive-close" onclick="event.stopPropagation();imsgDismissProactive()" aria-label="Dismiss">✕</button>
+</div>
+
+<!-- Launcher Button -->
+<button id="imsg-launcher" onclick="imsgToggle()" aria-label="Open chat" aria-expanded="false">
+  <img id="imsg-launcher-logo" src="" alt="" />
+  <svg id="imsg-launcher-icon" viewBox="0 0 24 24" fill="white">
+    <path d="M20 2H4C2.9 2 2 2.9 2 4v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+  </svg>
+  <svg id="imsg-launcher-close" class="imsg-launcher-close-icon" viewBox="0 0 24 24" fill="white">
+    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+  </svg>
+  <span id="imsg-badge" class="imsg-badge">1</span>
+</button>
+
+<!-- Chat Window -->
+<div id="imsg-window" role="dialog" aria-label="Chat support" aria-modal="true">
+
+  <!-- Header -->
+  <div class="imsg-header">
+    <div class="imsg-brand-banner" id="imsg-brand-banner">
+      {% if block.settings.brand_logo != blank %}
+      <img id="imsg-brand-logo-img" src="{{ block.settings.brand_logo | img_url: '300x80', crop: 'center' }}" alt="{{ block.settings.brand_name }}" class="loaded" />
+      {% else %}
+      <span id="imsg-brand-logo-text">{{ block.settings.brand_name }}</span>
+      {% endif %}
+    </div>
+    <div class="imsg-agent-row">
+      <div class="imsg-avatar-wrap">
+        <div class="imsg-avatar" id="imsg-avatar">
+          {% if block.settings.agent_photo != blank %}
+          <img class="imsg-avatar-photo loaded" id="imsg-avatar-photo" src="{{ block.settings.agent_photo | img_url: '120x120', crop: 'center' }}" alt="{{ block.settings.agent_name }}" />
+          {% else %}
+          <span class="imsg-avatar-initials" id="imsg-avatar-initials">{{ block.settings.agent_initials }}</span>
+          {% endif %}
+        </div>
+        <div class="imsg-online-dot"></div>
+      </div>
+      <div class="imsg-header-info">
+        <div class="imsg-header-name" id="imsg-agent-name">{{ block.settings.agent_name }}</div>
+        <div class="imsg-header-status">Active now</div>
+      </div>
+      <div class="imsg-header-actions">
+        <button class="imsg-hbtn" onclick="imsgToggle()" title="Minimize" aria-label="Minimize chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M5 12h14"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Messages area -->
+  <div class="imsg-messages" id="imsg-msgs" role="log" aria-live="polite"></div>
+
+  <!-- Image preview strip -->
+  <div class="imsg-img-preview-strip" id="imsg-img-strip">
+    <img class="imsg-img-preview-thumb" id="imsg-img-thumb" src="" alt="Preview" />
+    <button class="imsg-img-preview-remove" onclick="imsgClearImgPreview()" aria-label="Remove image">✕</button>
+  </div>
+
+  <!-- Quick replies -->
+  <div class="imsg-qr-bar" id="imsg-qr-bar" role="group" aria-label="Quick replies"></div>
+
+  <!-- Input bar -->
+  <div class="imsg-input-bar">
+    <div class="imsg-input-wrap">
+      <button class="imsg-img-btn" onclick="document.getElementById('imsg-msg-img-input').click()" title="Send image" aria-label="Attach image">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <rect x="3" y="3" width="18" height="18" rx="3"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+      </button>
+      <input type="file" id="imsg-msg-img-input" accept="image/*" onchange="imsgMsgImgSelected(event)" aria-label="Upload image" />
+      <textarea
+        id="imsg-textarea"
+        class="imsg-textarea"
+        placeholder="iMessage"
+        rows="1"
+        onkeydown="imsgHandleKey(event)"
+        oninput="imsgAutoResize(this); imsgToggleSend()"
+        aria-label="Type a message"
+      ></textarea>
+    </div>
+    <button class="imsg-send-btn" id="imsg-send-btn" onclick="imsgSend()" disabled aria-label="Send message">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 19V5M5 12l7-7 7 7"/>
+      </svg>
+    </button>
+  </div>
+
+</div>
+
+<script src="{{ 'chat-widget.js' | asset_url }}" defer></script>
+
+{% endif %}
+
+{% schema %}
+{
+  "name": "MOONAI Chat Widget",
+  "target": "body",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Widget Settings"
+    },
+    {
+      "type": "checkbox",
+      "id": "widget_enabled",
+      "label": "Enable Chat Widget",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "Brand Identity"
+    },
+    {
+      "type": "text",
+      "id": "brand_name",
+      "label": "Brand Name (header banner)",
+      "default": "MY STORE",
+      "info": "Shown in the chat header banner. Replaced by logo image if uploaded."
+    },
+    {
+      "type": "image_picker",
+      "id": "brand_logo",
+      "label": "Brand Logo Image",
+      "info": "Replaces the brand name text in the header. Recommended: 300×80px PNG with transparent background."
+    },
+    {
+      "type": "header",
+      "content": "Agent Profile"
+    },
+    {
+      "type": "text",
+      "id": "agent_name",
+      "label": "Agent Name",
+      "default": "Support Team",
+      "info": "Name shown in the chat header and proactive bubble."
+    },
+    {
+      "type": "text",
+      "id": "agent_initials",
+      "label": "Agent Initials (fallback)",
+      "default": "AI",
+      "info": "2-letter initials shown if no profile photo is uploaded."
+    },
+    {
+      "type": "image_picker",
+      "id": "agent_photo",
+      "label": "Agent Profile Photo",
+      "info": "Shown in the chat header and launcher button. Recommended: square image, min 120×120px."
+    },
+    {
+      "type": "header",
+      "content": "Colors & Style"
+    },
+    {
+      "type": "color",
+      "id": "brand_color",
+      "label": "Brand / Accent Color",
+      "default": "#007aff",
+      "info": "Used for the launcher button, sent message bubbles, and CTA buttons."
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent Color (gradient end)",
+      "default": "#0a84ff",
+      "info": "Used as the gradient end color on the launcher button."
+    },
+    {
+      "type": "select",
+      "id": "launcher_bg",
+      "label": "Launcher Button Style",
+      "options": [
+        { "value": "gradient", "label": "Gradient (brand + accent)" },
+        { "value": "solid", "label": "Solid (brand color only)" },
+        { "value": "dark", "label": "Dark / Black" },
+        { "value": "white", "label": "White" }
+      ],
+      "default": "gradient"
+    },
+    {
+      "type": "header",
+      "content": "Chat Behavior"
+    },
+    {
+      "type": "textarea",
+      "id": "greeting",
+      "label": "Opening Greeting Message",
+      "default": "Hey! 👋 Welcome! How can I help you today?",
+      "info": "First message Armie sends when the chat opens. Also used as the proactive bubble text fallback."
+    },
+    {
+      "type": "range",
+      "id": "proactive_delay",
+      "label": "Proactive Bubble Delay (seconds)",
+      "min": 3,
+      "max": 30,
+      "step": 1,
+      "default": 8,
+      "unit": "s",
+      "info": "How many seconds after page load before the proactive bubble appears."
+    },
+    {
+      "type": "header",
+      "content": "AI Backend"
+    },
+    {
+      "type": "text",
+      "id": "api_url",
+      "label": "AI Backend URL",
+      "default": "https://your-deployment.vercel.app",
+      "info": "Your deployed Vercel backend URL. Do not include trailing slash."
+    }
+  ]
+}
+{% endschema %}

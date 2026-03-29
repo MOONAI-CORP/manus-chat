@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>iMessage Chat Widget — Limited Armor</title>
+  <style>
+    /* ─── RESET ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      background: #f2f2f7;
+      min-height: 100vh;
+    }
+
+    /* ─── DEMO STORE MOCKUP ─────────────────────────────────────── */
+    .demo-bg {
+      width: 100vw; height: 100vh;
+      background: linear-gradient(160deg, #0a0a0a 0%, #1a1a1a 60%, #111111 100%);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; overflow: hidden; position: relative;
+    }
+    .demo-bg::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(255,159,10,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .demo-store-tag {
+      font-size: 13px; font-weight: 700; letter-spacing: 0.18em;
+      text-transform: uppercase; color: rgba(255,159,10,0.5);
+    }
+    .demo-title {
+      font-size: 36px; font-weight: 800; letter-spacing: -0.02em;
+      color: rgba(255,255,255,0.06);
+    }
+
+    /* ─── FLOATING LAUNCHER ─────────────────────────────────────── */
+    #imsg-launcher {
+      position: fixed; bottom: 28px; right: 28px;
+      width: 62px; height: 62px; border-radius: 50%;
+      cursor: pointer; z-index: 99998;
+      border: none; outline: none;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease;
+      -webkit-tap-highlight-color: transparent;
+      background: #ff9f0a;
+      box-shadow: 0 4px 28px rgba(255,159,10,0.55), 0 2px 8px rgba(0,0,0,0.3);
+    }
+    #imsg-launcher:hover { transform: scale(1.09); }
+    #imsg-launcher:active { transform: scale(0.94); }
+
+    /* Launcher inner — shows brand logo or default icon */
+    #imsg-launcher-inner {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    #imsg-launcher-logo {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      position: absolute; inset: 0;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #imsg-launcher-logo.loaded { opacity: 1; }
+    #imsg-launcher-icon {
+      position: absolute;
+      transition: opacity 0.3s, transform 0.3s;
+    }
+    #imsg-launcher-icon.hide { opacity: 0; transform: scale(0.7) rotate(-20deg); }
+    #imsg-launcher-close {
+      position: absolute;
+      opacity: 0; transform: rotate(-90deg) scale(0.7);
+      transition: opacity 0.25s, transform 0.3s;
+    }
+    #imsg-launcher-close.show { opacity: 1; transform: rotate(0deg) scale(1); }
+
+    /* Notification badge */
+    #imsg-badge {
+      position: absolute; top: -1px; right: -1px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: #ff3b30; border: 2.5px solid #fff;
+      font-size: 10px; font-weight: 700; color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      animation: imsg-badge-pulse 2.2s infinite;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    @keyframes imsg-badge-pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,59,48,0.5); }
+      50%       { transform: scale(1.12); box-shadow: 0 0 0 5px rgba(255,59,48,0); }
+    }
+
+    /* ─── CHAT WINDOW ───────────────────────────────────────────── */
+    #imsg-window {
+      position: fixed; bottom: 106px; right: 28px;
+      width: 375px; height: 600px;
+      border-radius: 24px; overflow: hidden;
+      z-index: 99999;
+      display: flex; flex-direction: column;
+      background: #000;
+      box-shadow:
+        0 40px 100px rgba(0,0,0,0.5),
+        0 10px 30px rgba(0,0,0,0.35),
+        0 0 0 0.5px rgba(255,255,255,0.09);
+      transform: scale(0.82) translateY(40px);
+      opacity: 0; pointer-events: none;
+      transition:
+        transform 0.38s cubic-bezier(0.34,1.56,0.64,1),
+        opacity 0.26s ease;
+      transform-origin: bottom right;
+    }
+    #imsg-window.open {
+      transform: scale(1) translateY(0);
+      opacity: 1; pointer-events: all;
+    }
+
+    /* ─── HEADER ────────────────────────────────────────────────── */
+    .imsg-header {
+      flex-shrink: 0;
+      background: rgba(28,28,30,0.97);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      padding: 0 16px;
+      border-bottom: 0.5px solid rgba(255,255,255,0.07);
+    }
+
+    /* Brand banner strip */
+    .imsg-brand-banner {
+      height: 52px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      border-bottom: 0.5px solid rgba(255,255,255,0.05);
+      overflow: hidden;
+    }
+    .imsg-brand-banner-bg {
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, rgba(0,122,255,0.18) 0%, rgba(0,122,255,0.06) 100%);
+    }
+    #imsg-brand-logo-img {
+      height: 28px; max-width: 160px;
+      object-fit: contain; position: relative; z-index: 1;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #imsg-brand-logo-img.loaded { opacity: 1; }
+    #imsg-brand-logo-text {
+      font-size: 14px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: rgba(255,255,255,0.7);
+      position: relative; z-index: 1;
+      transition: opacity 0.3s;
+    }
+
+    /* Upload button overlays on banner */
+    .imsg-banner-upload-btn {
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      z-index: 2; background: rgba(255,255,255,0.1);
+      border: 1px dashed rgba(255,255,255,0.25);
+      border-radius: 8px; padding: 4px 8px;
+      font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.5);
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .imsg-banner-upload-btn:hover {
+      background: rgba(255,255,255,0.18);
+      color: rgba(255,255,255,0.85);
+      border-color: rgba(255,255,255,0.4);
+    }
+
+    /* Agent row */
+    .imsg-agent-row {
+      display: flex; align-items: center; gap: 11px;
+      padding: 12px 0 13px;
+    }
+    .imsg-avatar-wrap { position: relative; flex-shrink: 0; }
+
+    /* Avatar circle */
+    .imsg-avatar {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: linear-gradient(135deg, #007aff, #34c759);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; font-weight: 700; color: #fff;
+      overflow: hidden; position: relative;
+      border: 2px solid rgba(255,255,255,0.1);
+      cursor: pointer;
+      transition: filter 0.2s;
+    }
+    .imsg-avatar:hover .imsg-avatar-overlay { opacity: 1; }
+    .imsg-avatar-photo {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; object-fit: cover;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .imsg-avatar-photo.loaded { opacity: 1; }
+    .imsg-avatar-initials { position: relative; z-index: 1; transition: opacity 0.3s; }
+    .imsg-avatar-overlay {
+      position: absolute; inset: 0; z-index: 2;
+      background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.2s;
+      border-radius: 50%;
+    }
+    .imsg-avatar-overlay svg { width: 16px; height: 16px; }
+
+    /* Upload input (hidden) */
+    #imsg-avatar-input { display: none; }
+    #imsg-logo-input   { display: none; }
+
+    /* Online dot */
+    .imsg-online-dot {
+      position: absolute; bottom: 1px; right: 1px;
+      width: 12px; height: 12px;
+      background: #34c759; border-radius: 50%;
+      border: 2.5px solid rgba(28,28,30,0.97);
+    }
+
+    .imsg-header-info { flex: 1; min-width: 0; }
+    .imsg-header-name {
+      font-size: 15px; font-weight: 600; color: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .imsg-header-sub {
+      font-size: 11.5px; color: rgba(255,255,255,0.4);
+      margin-top: 1.5px;
+    }
+    .imsg-header-status {
+      font-size: 11.5px; color: #34c759; margin-top: 1px;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .imsg-header-status::before {
+      content: ''; display: inline-block;
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #34c759;
+    }
+
+    .imsg-header-actions { display: flex; gap: 6px; }
+    .imsg-hbtn {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: rgba(255,255,255,0.07);
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: #007aff; transition: background 0.15s;
+    }
+    .imsg-hbtn:hover { background: rgba(255,255,255,0.14); }
+    .imsg-hbtn svg { width: 15px; height: 15px; }
+
+    /* ─── MESSAGES ──────────────────────────────────────────────── */
+    .imsg-messages {
+      flex: 1; overflow-y: auto;
+      padding: 14px 14px 8px;
+      display: flex; flex-direction: column; gap: 3px;
+      background: #000;
+      scroll-behavior: smooth;
+    }
+    .imsg-messages::-webkit-scrollbar { width: 3px; }
+    .imsg-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+    /* Date separator */
+    .imsg-date-sep {
+      text-align: center; font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      margin: 8px 0 6px; font-weight: 500; letter-spacing: 0.02em;
+    }
+
+    /* Message row */
+    .imsg-row {
+      display: flex; flex-direction: column;
+      max-width: 80%;
+      animation: imsg-in 0.28s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    @keyframes imsg-in {
+      from { opacity: 0; transform: scale(0.82) translateY(10px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .imsg-row.sent { align-self: flex-end; align-items: flex-end; }
+    .imsg-row.recv { align-self: flex-start; align-items: flex-start; }
+
+    /* Bubble */
+    .imsg-bubble {
+      padding: 10px 14px;
+      border-radius: 20px;
+      font-size: 15px; line-height: 1.45;
+      word-break: break-word; max-width: 100%;
+    }
+    .imsg-row.sent .imsg-bubble {
+      background: #007aff; color: #fff;
+      border-bottom-right-radius: 5px;
+    }
+    .imsg-row.recv .imsg-bubble {
+      background: #1c1c1e; color: #fff;
+      border-bottom-left-radius: 5px;
+    }
+
+    /* Consecutive bubble radius adjustments */
+    .imsg-row.sent  .imsg-bubble.top    { border-top-right-radius: 20px;  border-bottom-right-radius: 5px; }
+    .imsg-row.sent  .imsg-bubble.mid    { border-top-right-radius: 5px;   border-bottom-right-radius: 5px; }
+    .imsg-row.sent  .imsg-bubble.bottom { border-top-right-radius: 5px;   border-bottom-right-radius: 20px; }
+    .imsg-row.recv  .imsg-bubble.top    { border-top-left-radius: 20px;   border-bottom-left-radius: 5px; }
+    .imsg-row.recv  .imsg-bubble.mid    { border-top-left-radius: 5px;    border-bottom-left-radius: 5px; }
+    .imsg-row.recv  .imsg-bubble.bottom { border-top-left-radius: 5px;    border-bottom-left-radius: 20px; }
+
+    /* Image bubble */
+    .imsg-bubble-img {
+      border-radius: 18px; overflow: hidden;
+      max-width: 200px; cursor: pointer;
+      border-bottom-left-radius: 5px;
+    }
+    .imsg-bubble-img img { width: 100%; display: block; }
+
+    /* Timestamp + receipt */
+    .imsg-ts {
+      font-size: 10.5px; color: rgba(255,255,255,0.28);
+      margin-top: 3px; padding: 0 4px;
+    }
+    .imsg-row.sent .imsg-ts { text-align: right; }
+    .imsg-receipt {
+      font-size: 10px; color: rgba(255,255,255,0.28);
+      text-align: right; padding: 0 4px; margin-top: 1px;
+    }
+
+    /* ─── TYPING INDICATOR ──────────────────────────────────────── */
+    .imsg-typing {
+      display: flex; align-items: center; gap: 4px;
+      padding: 11px 15px;
+      background: #1c1c1e;
+      border-radius: 20px; border-bottom-left-radius: 5px;
+      width: fit-content; margin-top: 4px;
+    }
+    .imsg-typing span {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: rgba(255,255,255,0.4);
+      animation: imsg-dot 1.4s infinite ease-in-out;
+    }
+    .imsg-typing span:nth-child(1) { animation-delay: 0s; }
+    .imsg-typing span:nth-child(2) { animation-delay: 0.2s; }
+    .imsg-typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes imsg-dot {
+      0%,60%,100% { transform: translateY(0); opacity: 0.4; }
+      30%          { transform: translateY(-5px); opacity: 1; }
+    }
+
+    /* ─── PRODUCT CARD ──────────────────────────────────────────── */
+    .imsg-product-card {
+      background: #1c1c1e; border-radius: 18px;
+      overflow: hidden; width: 230px;
+      border: 0.5px solid rgba(255,255,255,0.09);
+      cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+      text-decoration: none; display: block;
+    }
+    .imsg-product-card:hover {
+      transform: scale(1.025);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .imsg-product-thumb {
+      width: 100%; height: 130px;
+      background: linear-gradient(135deg, #1c1c1e, #2c2c2e);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 44px; overflow: hidden;
+    }
+    .imsg-product-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .imsg-product-body { padding: 11px 13px 13px; }
+    .imsg-product-name { font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 3px; line-height: 1.3; }
+    .imsg-product-price { font-size: 14px; color: #34c759; font-weight: 700; }
+    .imsg-product-cta {
+      display: block; margin-top: 9px; padding: 8px;
+      background: #007aff; border-radius: 11px;
+      text-align: center; font-size: 12.5px; font-weight: 600;
+      color: #fff; text-decoration: none;
+    }
+
+    /* ─── QUICK REPLIES ─────────────────────────────────────────── */
+    .imsg-qr-bar {
+      background: #000; padding: 7px 14px 6px;
+      display: flex; flex-wrap: wrap; gap: 7px;
+      flex-shrink: 0; border-top: 0.5px solid rgba(255,255,255,0.05);
+    }
+    .imsg-qr-chip {
+      padding: 7px 14px; border-radius: 20px;
+      border: 1px solid rgba(0,122,255,0.6);
+      color: #007aff; font-size: 13px; font-weight: 500;
+      cursor: pointer; background: transparent;
+      transition: all 0.15s; white-space: nowrap;
+      font-family: inherit;
+    }
+    .imsg-qr-chip:hover { background: #007aff; color: #fff; border-color: #007aff; }
+
+    /* ─── INPUT BAR ─────────────────────────────────────────────── */
+    .imsg-input-bar {
+      flex-shrink: 0;
+      background: rgba(28,28,30,0.98);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      padding: 9px 12px 16px;
+      display: flex; align-items: flex-end; gap: 8px;
+      border-top: 0.5px solid rgba(255,255,255,0.07);
+    }
+    .imsg-input-wrap {
+      flex: 1; background: #1c1c1e;
+      border-radius: 22px; border: 1px solid rgba(255,255,255,0.09);
+      display: flex; align-items: flex-end;
+      padding: 8px 12px; gap: 8px;
+      transition: border-color 0.2s;
+    }
+    .imsg-input-wrap:focus-within { border-color: rgba(0,122,255,0.45); }
+
+    /* Image attach button */
+    .imsg-img-btn {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: rgba(255,255,255,0.07); border: none;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; color: rgba(255,255,255,0.45);
+      transition: background 0.15s, color 0.15s;
+    }
+    .imsg-img-btn:hover { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.8); }
+    .imsg-img-btn svg { width: 14px; height: 14px; }
+    #imsg-msg-img-input { display: none; }
+
+    .imsg-textarea {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: #fff; font-size: 15px; font-family: inherit;
+      resize: none; max-height: 100px; line-height: 1.4; min-height: 22px;
+    }
+    .imsg-textarea::placeholder { color: rgba(255,255,255,0.28); }
+
+    .imsg-send-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: #007aff; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
+      box-shadow: 0 2px 12px rgba(0,122,255,0.45);
+    }
+    .imsg-send-btn:hover { transform: scale(1.09); background: #0a84ff; }
+    .imsg-send-btn:active { transform: scale(0.92); }
+    .imsg-send-btn:disabled {
+      background: rgba(255,255,255,0.09); box-shadow: none; cursor: default;
+    }
+    .imsg-send-btn:disabled svg { opacity: 0.25; }
+
+    /* ─── IMAGE PREVIEW STRIP (before send) ─────────────────────── */
+    .imsg-img-preview-strip {
+      background: #000; padding: 8px 14px 4px;
+      display: none; align-items: center; gap: 8px;
+      flex-shrink: 0; border-top: 0.5px solid rgba(255,255,255,0.05);
+    }
+    .imsg-img-preview-strip.visible { display: flex; }
+    .imsg-img-preview-thumb {
+      width: 56px; height: 56px; border-radius: 10px;
+      object-fit: cover; border: 1.5px solid rgba(255,255,255,0.15);
+    }
+    .imsg-img-preview-remove {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(255,59,48,0.85); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 13px; line-height: 1;
+      margin-left: -4px; margin-top: -28px; align-self: flex-start;
+    }
+
+    /* ─── UPLOAD PANEL (settings overlay) ──────────────────────── */
+    #imsg-upload-panel {
+      position: absolute; inset: 0; z-index: 10;
+      background: rgba(0,0,0,0.92);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 24px; padding: 32px 28px;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    #imsg-upload-panel.open { opacity: 1; pointer-events: all; }
+
+    .imsg-panel-title {
+      font-size: 17px; font-weight: 700; color: #fff;
+      letter-spacing: -0.01em;
+    }
+    .imsg-panel-subtitle {
+      font-size: 13px; color: rgba(255,255,255,0.4);
+      text-align: center; margin-top: -16px; line-height: 1.5;
+    }
+
+    .imsg-upload-row {
+      width: 100%; display: flex; flex-direction: column; gap: 10px;
+    }
+    .imsg-upload-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: rgba(255,255,255,0.35);
+    }
+
+    /* Drop zone */
+    .imsg-dropzone {
+      width: 100%; border-radius: 16px;
+      border: 1.5px dashed rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.04);
+      padding: 20px 16px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 8px;
+      cursor: pointer; transition: all 0.2s; position: relative;
+    }
+    .imsg-dropzone:hover, .imsg-dropzone.drag-over {
+      border-color: rgba(0,122,255,0.6);
+      background: rgba(0,122,255,0.07);
+    }
+    .imsg-dropzone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+    .imsg-dropzone-icon { font-size: 28px; }
+    .imsg-dropzone-text {
+      font-size: 13px; color: rgba(255,255,255,0.5); text-align: center;
+    }
+    .imsg-dropzone-text strong { color: #007aff; }
+
+    /* Preview inside dropzone */
+    .imsg-dz-preview {
+      width: 72px; height: 72px; border-radius: 50%;
+      object-fit: cover; border: 2px solid rgba(0,122,255,0.5);
+      display: none;
+    }
+    .imsg-dz-preview.visible { display: block; }
+    .imsg-dz-preview-banner {
+      width: 100%; height: 44px; border-radius: 10px;
+      object-fit: contain; border: 1.5px solid rgba(0,122,255,0.4);
+      display: none; background: rgba(255,255,255,0.05);
+    }
+    .imsg-dz-preview-banner.visible { display: block; }
+
+    .imsg-panel-close {
+      padding: 11px 28px; border-radius: 14px;
+      background: #007aff; border: none; cursor: pointer;
+      font-size: 15px; font-weight: 600; color: #fff;
+      font-family: inherit; transition: background 0.15s, transform 0.15s;
+      margin-top: 4px;
+    }
+    .imsg-panel-close:hover { background: #0a84ff; transform: scale(1.03); }
+
+    /* ─── PRODUCT CARDS ──────────────────────────────────────────── */
+    /* ─── PRODUCT CARDS — SWIPEABLE CAROUSEL ───────────────────── */
+    .imsg-product-cards-wrap {
+      display: flex; flex-direction: row; gap: 10px;
+      padding: 6px 2px 10px;
+      overflow-x: auto; overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; /* Firefox */
+      cursor: grab;
+      /* extend slightly past bubble edge for scroll room */
+      margin-left: -4px; margin-right: -4px;
+      padding-left: 4px; padding-right: 4px;
+    }
+    .imsg-product-cards-wrap::-webkit-scrollbar { display: none; }
+    .imsg-product-cards-wrap.dragging { cursor: grabbing; }
+    .imsg-ai-product-card {
+      display: flex; flex-direction: column;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      text-decoration: none; color: inherit;
+      transition: background 0.18s, transform 0.15s, box-shadow 0.18s;
+      min-width: 148px; max-width: 148px;
+      flex-shrink: 0;
+      scroll-snap-align: start;
+      overflow: hidden;
+    }
+    .imsg-ai-product-card:hover {
+      background: rgba(255,255,255,0.11);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    .imsg-pc-img {
+      width: 100%; height: 130px;
+      object-fit: cover; flex-shrink: 0;
+      background: rgba(255,255,255,0.06);
+      display: block;
+    }
+    .imsg-pc-img-placeholder {
+      width: 100%; height: 130px;
+      background: rgba(255,255,255,0.06);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 36px; flex-shrink: 0;
+    }
+    .imsg-pc-body { flex: 1; min-width: 0; padding: 10px 10px 0; }
+    .imsg-pc-badge {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: #5e5ce6;
+      margin-bottom: 4px;
+    }
+    .imsg-pc-name {
+      font-size: 12px; font-weight: 600; color: #fff;
+      line-height: 1.3;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 5px;
+    }
+    .imsg-pc-price-row {
+      display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+    }
+    .imsg-pc-price {
+      font-size: 13px; font-weight: 700; color: #fff;
+    }
+    .imsg-pc-original {
+      font-size: 10px; color: rgba(255,255,255,0.35);
+      text-decoration: line-through;
+    }
+    .imsg-pc-discount {
+      font-size: 9px; font-weight: 700;
+      background: rgba(255,59,48,0.2); color: #ff6b6b;
+      padding: 1px 4px; border-radius: 4px;
+    }
+    .imsg-pc-rating {
+      font-size: 10px; color: rgba(255,255,255,0.4);
+      margin-top: 4px;
+    }
+    .imsg-pc-cta {
+      display: block;
+      font-size: 12px; font-weight: 600; text-align: center;
+      color: #fff; padding: 8px 10px;
+      margin: 8px 10px 10px;
+      border-radius: 20px; white-space: nowrap;
+    }
+
+    /* ─── PROACTIVE BUBBLE ───────────────────────────────────────── */
+    #imsg-proactive-bubble {
+      position: fixed; bottom: 104px; right: 28px;
+      max-width: 260px; z-index: 99997;
+      background: #1c1c1e;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 18px 18px 4px 18px;
+      padding: 12px 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      opacity: 0; transform: translateY(10px) scale(0.95);
+      transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+    }
+    #imsg-proactive-bubble.show {
+      opacity: 1; transform: translateY(0) scale(1);
+      pointer-events: all;
+    }
+    .imsg-proactive-text {
+      font-size: 13px; color: rgba(255,255,255,0.85);
+      line-height: 1.45; margin-bottom: 8px;
+    }
+    .imsg-proactive-chips {
+      display: flex; flex-wrap: wrap; gap: 5px;
+    }
+    .imsg-proactive-chip {
+      font-size: 11px; font-weight: 500;
+      background: rgba(94,92,230,0.25); color: #a8a6ff;
+      border: 1px solid rgba(94,92,230,0.4);
+      border-radius: 12px; padding: 4px 10px;
+      cursor: pointer; border: none;
+      transition: background 0.15s;
+    }
+    .imsg-proactive-chip:hover { background: rgba(94,92,230,0.4); }
+    .imsg-proactive-close {
+      position: absolute; top: 8px; right: 10px;
+      background: none; border: none; color: rgba(255,255,255,0.3);
+      font-size: 14px; cursor: pointer; padding: 2px 4px;
+    }
+    .imsg-proactive-close:hover { color: rgba(255,255,255,0.7); }
+
+    /* ─── MOBILE ─────────────────────────────────────────────────── */
+    @media (max-width: 430px) {
+      #imsg-window {
+        right: 0; bottom: 0;
+        width: 100vw; height: 100dvh;
+        border-radius: 0;
+        border-top-left-radius: 22px;
+        border-top-right-radius: 22px;
+      }
+      #imsg-launcher { bottom: 20px; right: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Demo store background -->
+<div class="demo-bg">
+  <div class="demo-store-tag">Limited Armor</div>
+  <div class="demo-title">Limited Armor</div>
+</div>
+
+<!-- Proactive bubble -->
+<div id="imsg-proactive-bubble" onclick="imsgOpenFromProactive()" style="cursor:pointer">
+  <button class="imsg-proactive-close" onclick="event.stopPropagation();imsgDismissProactive()">✕</button>
+  <div class="imsg-proactive-text" id="imsg-proactive-text">Hey! 👋 We're having a huge Holiday Sale — 30% OFF everything! Can I help you find something?</div>
+  <div class="imsg-proactive-chips" id="imsg-proactive-chips"></div>
+</div>
+
+<!-- ─── LAUNCHER ─────────────────────────────────────────────────── -->
+<button id="imsg-launcher" aria-label="Open chat" onclick="imsgToggle()">
+  <div id="imsg-launcher-inner">
+    <img id="imsg-launcher-logo" src="" alt="" />
+    <svg id="imsg-launcher-icon" width="30" height="30" viewBox="0 0 28 28" fill="none">
+      <path d="M14 2C7.373 2 2 6.925 2 13c0 2.21.72 4.26 1.95 5.96L2.5 22.5l4.04-1.3A12.07 12.07 0 0014 24c6.627 0 12-4.925 12-11S20.627 2 14 2z" fill="white"/>
+    </svg>
+    <svg id="imsg-launcher-close" width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path d="M18 6L6 18M6 6l12 12" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <span id="imsg-badge">1</span>
+</button>
+
+<!-- ─── CHAT WINDOW ───────────────────────────────────────────────── -->
+<div id="imsg-window" role="dialog" aria-label="Chat support">
+
+  <!-- Header -->
+  <div class="imsg-header">
+    <!-- Brand banner -->
+    <div class="imsg-brand-banner">
+      <div class="imsg-brand-banner-bg"></div>
+      <img id="imsg-brand-logo-img" src="" alt="Brand Logo" />
+      <span id="imsg-brand-logo-text">LIMITED ARMOR</span>
+
+    </div>
+
+    <!-- Agent row -->
+    <div class="imsg-agent-row">
+      <div class="imsg-avatar-wrap">
+        <div class="imsg-avatar" id="imsg-avatar">
+          <img class="imsg-avatar-photo" id="imsg-avatar-photo" src="" alt="" />
+          <span class="imsg-avatar-initials" id="imsg-avatar-initials">LA</span>
+
+        </div>
+        <div class="imsg-online-dot"></div>
+      </div>
+      <div class="imsg-header-info">
+        <div class="imsg-header-name" id="imsg-agent-name">Support Team</div>
+        <div class="imsg-header-status">Active now</div>
+      </div>
+      <div class="imsg-header-actions">
+        <button class="imsg-hbtn" onclick="imsgToggle()" title="Minimize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M5 12h14"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Messages area -->
+  <div class="imsg-messages" id="imsg-msgs"></div>
+
+  <!-- Image preview strip -->
+  <div class="imsg-img-preview-strip" id="imsg-img-strip">
+    <img class="imsg-img-preview-thumb" id="imsg-img-thumb" src="" alt="" />
+    <button class="imsg-img-preview-remove" onclick="imsgClearImgPreview()">✕</button>
+  </div>
+
+  <!-- Quick replies -->
+  <div class="imsg-qr-bar" id="imsg-qr-bar"></div>
+
+  <!-- Input bar -->
+  <div class="imsg-input-bar">
+    <div class="imsg-input-wrap">
+      <button class="imsg-img-btn" onclick="document.getElementById('imsg-msg-img-input').click()" title="Send image">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <rect x="3" y="3" width="18" height="18" rx="3"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+      </button>
+      <input type="file" id="imsg-msg-img-input" accept="image/*" onchange="imsgMsgImgSelected(event)" />
+      <textarea
+        id="imsg-textarea"
+        class="imsg-textarea"
+        placeholder="iMessage"
+        rows="1"
+        onkeydown="imsgHandleKey(event)"
+        oninput="imsgAutoResize(this); imsgToggleSend()"
+      ></textarea>
+    </div>
+    <button class="imsg-send-btn" id="imsg-send-btn" onclick="imsgSend()" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 19V5M5 12l7-7 7 7"/>
+      </svg>
+    </button>
+  </div>
+
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   ⚙  CONFIGURATION — Edit these values for your store
+   ══════════════════════════════════════════════════════════════════ */
+var IMSG = {
+  agentName:   'Armie',
+  agentTitle:  'Limited Armor',
+  brandName:   'LIMITED ARMOR',
+  brandColor:  '#ff9f0a',
+  accentColor: '#ffb340',
+  greeting:    "Hey! 👋 Welcome to Limited Armor — we have 15–30% OFF everything right now. What phone do you have? I'll find you the perfect case.",
+  quickReplies: ['Shop iPhone Cases 📱', 'See Watch Bands ⌚', "What's on sale? 🔥", 'I need help choosing ✨'],
+  proactiveDelay: 8000,   // ms before proactive bubble appears
+  proactiveEnabled: true,
+  apiUrl: 'https://imessage-chat-widget.vercel.app'
+};
+/* ══════════════════════════════════════════════════════════════════ */
+
+var imsgIsOpen         = false;
+var imsgMsgCount       = 0;
+var imsgPendingImg     = null;
+var imsgHistory        = [];
+var imsgTypingLock     = false;
+var imsgProactiveShown = false;
+var imsgProactiveTimer = null;
+
+var IMSG_API_URL       = IMSG.apiUrl + '/chat';
+var IMSG_PROACTIVE_URL = IMSG.apiUrl + '/proactive';
+
+/* ── INIT ─────────────────────────────────────────────────────────── */
+// Run after DOM is fully ready so #imsg-msgs exists for session restore
+var imsgSessionRestored = false;
+
+function imsgInit() {
+  applyBrandColor(IMSG.brandColor, IMSG.accentColor);
+  document.getElementById('imsg-agent-name').textContent = IMSG.agentName;
+  document.getElementById('imsg-avatar-initials').textContent = getInitials(IMSG.agentName);
+  document.getElementById('imsg-brand-logo-text').textContent = IMSG.brandName;
+  setQRs(IMSG.quickReplies);
+
+  // Restore saved images from localStorage (set by backend/admin only)
+  var savedAvatar = localStorage.getItem('imsg_avatar');
+  var savedLogo   = localStorage.getItem('imsg_logo');
+  if (savedAvatar) applyAvatar(savedAvatar);
+  if (savedLogo)   applyLogo(savedLogo);
+
+  // ── PERSISTENT CHAT: restore history from localStorage ──
+  // DOM is ready here so innerHTML restore works correctly
+  imsgSessionRestored = imsgRestoreSession();
+
+  // ── REP AI PROACTIVE TRIGGERS ──
+  if (IMSG.proactiveEnabled) {
+    // Track visit count for repeat visitor detection
+    var visitCount = parseInt(localStorage.getItem('imsg_visits') || '0') + 1;
+    localStorage.setItem('imsg_visits', visitCount);
+    var isRepeatVisitor = visitCount > 1;
+
+    // Repeat visitors get proactive faster (4s vs 8s)
+    var delay = isRepeatVisitor ? 4000 : IMSG.proactiveDelay;
+    imsgProactiveTimer = setTimeout(imsgShowProactive, delay);
+
+    // Exit intent (mouse leaves top of viewport)
+    document.addEventListener('mouseleave', function(e) {
+      if (e.clientY <= 0 && !imsgProactiveShown && !imsgIsOpen) {
+        clearTimeout(imsgProactiveTimer);
+        imsgShowProactive();
+      }
+    });
+
+    // Scroll depth trigger — fires at 50% scroll
+    var scrollFired = false;
+    window.addEventListener('scroll', function() {
+      if (scrollFired || imsgProactiveShown || imsgIsOpen) return;
+      var scrollPct = (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100;
+      if (scrollPct >= 50) {
+        scrollFired = true;
+        clearTimeout(imsgProactiveTimer);
+        setTimeout(imsgShowProactive, 1200);
+      }
+    }, { passive: true });
+
+    // Idle detection — 45s no mouse movement
+    var idleTimer;
+    var idleFired = false;
+    function resetIdle() {
+      clearTimeout(idleTimer);
+      if (!idleFired && !imsgProactiveShown && !imsgIsOpen) {
+        idleTimer = setTimeout(function() {
+          idleFired = true;
+          clearTimeout(imsgProactiveTimer);
+          imsgShowProactive();
+        }, 45000);
+      }
+    }
+    document.addEventListener('mousemove', resetIdle, { passive: true });
+    document.addEventListener('keydown', resetIdle, { passive: true });
+    resetIdle();
+
+    // Cart abandonment — if cart page, fire proactive in 5s
+    if (imsgDetectPageType() === 'cart') {
+      clearTimeout(imsgProactiveTimer);
+      imsgProactiveTimer = setTimeout(imsgShowProactive, 5000);
+    }
+  }
+}
+
+// Wait for DOM to be ready before initialising
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', imsgInit);
+} else {
+  imsgInit();
+}
+
+function applyBrandColor(color, accent) {
+  var launcher = document.getElementById('imsg-launcher');
+  launcher.style.background   = 'linear-gradient(145deg,' + color + ',' + accent + ')';
+  launcher.style.boxShadow    = '0 4px 28px ' + color + '88, 0 2px 8px rgba(0,0,0,0.3)';
+  var sendBtn = document.getElementById('imsg-send-btn');
+  sendBtn.style.background    = color;
+  sendBtn.style.boxShadow     = '0 2px 12px ' + color + '66';
+  var avatar = document.getElementById('imsg-avatar');
+  avatar.style.background     = 'linear-gradient(135deg,' + color + ',' + accent + ')';
+  // Update product card badge colors
+  document.querySelectorAll('.imsg-pc-badge').forEach(function(el) { el.style.color = color; });
+  document.querySelectorAll('.imsg-pc-cta').forEach(function(el) { el.style.background = color; });
+}
+
+function getInitials(name) {
+  return name.split(' ').map(function(w){ return w[0]; }).join('').slice(0,2).toUpperCase();
+}
+
+/* ── TOGGLE OPEN/CLOSE ───────────────────────────────────────────── */
+function imsgToggle() {
+  var win   = document.getElementById('imsg-window');
+  var badge = document.getElementById('imsg-badge');
+  var icon  = document.getElementById('imsg-launcher-icon');
+  var close = document.getElementById('imsg-launcher-close');
+
+  imsgIsOpen = !imsgIsOpen;
+  win.classList.toggle('open', imsgIsOpen);
+  icon.classList.toggle('hide', imsgIsOpen);
+  close.classList.toggle('show', imsgIsOpen);
+
+  if (imsgIsOpen) {
+    badge.style.display = 'none';
+    imsgDismissProactive();
+    // Show welcome only if no session and no proactive message was injected
+    if (imsgMsgCount === 0 && !imsgSessionRestored) setTimeout(imsgWelcome, 320);
+    setTimeout(function(){ document.getElementById('imsg-textarea').focus(); }, 420);
+  }
+}
+
+/* ── PROACTIVE BUBBLE ────────────────────────────────────────────── */
+function imsgShowProactive() {
+  if (imsgProactiveShown || imsgIsOpen) return;
+  imsgProactiveShown = true;
+
+  var pageType = imsgDetectPageType();
+  var pageTitle = imsgGetProductTitle();
+
+  fetch(IMSG_PROACTIVE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page_type: pageType, page_title: pageTitle })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    document.getElementById('imsg-proactive-text').textContent = data.message || IMSG.greeting;
+    var chipsEl = document.getElementById('imsg-proactive-chips');
+    chipsEl.innerHTML = '';
+    (data.chips || []).forEach(function(chip) {
+      var btn = document.createElement('button');
+      btn.className = 'imsg-proactive-chip';
+      btn.textContent = chip;
+      btn.onclick = function() {
+        var proactiveMsg = document.getElementById('imsg-proactive-text').textContent;
+        imsgDismissProactive();
+        if (!imsgIsOpen) {
+          // Prevent welcome from firing — we'll inject the proactive message instead
+          imsgSessionRestored = true;
+          imsgToggle();
+        }
+        setTimeout(function() {
+          // If chat is empty, show the proactive message as Armie's opener first
+          if (imsgMsgCount === 0) {
+            addDateSep('Today');
+            addMsg(proactiveMsg, 'recv');
+            imsgHistory.push({ role: 'assistant', content: proactiveMsg });
+          }
+          addMsg(chip, 'sent');
+          imsgHistory.push({ role: 'user', content: chip });
+          imsgSaveSession();
+          imsgAIReply();
+        }, 350);
+      };
+      chipsEl.appendChild(btn);
+    });
+    document.getElementById('imsg-proactive-bubble').classList.add('show');
+    // Show notification badge
+    var badge = document.getElementById('imsg-badge');
+    badge.style.display = 'flex';
+  })
+  .catch(function() {
+    // Fallback proactive message
+    document.getElementById('imsg-proactive-text').textContent = IMSG.greeting;
+    document.getElementById('imsg-proactive-bubble').classList.add('show');
+    var badge = document.getElementById('imsg-badge');
+    badge.style.display = 'flex';
+  });
+}
+
+// Clicking the proactive bubble itself opens chat with the proactive message as opener
+function imsgOpenFromProactive() {
+  var proactiveMsg = document.getElementById('imsg-proactive-text').textContent;
+  imsgDismissProactive();
+  if (!imsgIsOpen) {
+    imsgSessionRestored = true; // prevent welcome from overriding
+    imsgToggle();
+  }
+  setTimeout(function() {
+    if (imsgMsgCount === 0) {
+      addDateSep('Today');
+      addMsg(proactiveMsg, 'recv');
+      imsgHistory.push({ role: 'assistant', content: proactiveMsg });
+      imsgSaveSession();
+      setQRs(IMSG.quickReplies);
+    }
+  }, 350);
+}
+
+function imsgDismissProactive() {
+  document.getElementById('imsg-proactive-bubble').classList.remove('show');
+}
+
+function imsgDetectPageType() {
+  var path = window.location.pathname || '';
+  if (path.indexOf('/products/') > -1) return 'product';
+  if (path.indexOf('/collections/') > -1) return 'collection';
+  if (path.indexOf('/cart') > -1) return 'cart';
+  if (path.indexOf('/search') > -1) return 'search';
+  return 'homepage';
+}
+
+function imsgGetProductTitle() {
+  // Try to get the actual product title from the page for product-specific proactive messages
+  try {
+    var h1 = document.querySelector('h1.product__title, h1.product-title, h1[class*="product"], .product-single__title, [data-product-title]');
+    if (h1) return h1.textContent.trim();
+    var og = document.querySelector('meta[property="og:title"]');
+    if (og) return og.getAttribute('content').replace(' – Limited Armor', '').replace(' | Limited Armor', '').trim();
+  } catch(e) {}
+  return document.title || '';
+}
+
+//* ── WELCOME FLOW ──────────────────────────────────────────── */
+function imsgWelcome() {
+  clearMsgs();
+  addDateSep('Today');
+  showTyping(function() {
+    addMsg(IMSG.greeting, 'recv');
+    setQRs(IMSG.quickReplies);
+  }, 1500);
+}
+
+/* ── PERSISTENT CHAT SESSION ───────────────────────────────── */
+var IMSG_SESSION_KEY = 'imsg_session_v1';
+var IMSG_SESSION_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+
+function imsgSaveSession() {
+  try {
+    var el = document.getElementById('imsg-msgs');
+    localStorage.setItem(IMSG_SESSION_KEY, JSON.stringify({
+      ts: Date.now(),
+      html: el.innerHTML,
+      history: imsgHistory,
+      msgCount: imsgMsgCount
+    }));
+  } catch(e) {}
+}
+
+function imsgRestoreSession() {
+  try {
+    var raw = localStorage.getItem(IMSG_SESSION_KEY);
+    if (!raw) return;
+    var data = JSON.parse(raw);
+    // Expire after 24 hours
+    if (Date.now() - data.ts > IMSG_SESSION_MAX_AGE) {
+      localStorage.removeItem(IMSG_SESSION_KEY);
+      return;
+    }
+    if (data.html && data.html.length > 10) {
+      document.getElementById('imsg-msgs').innerHTML = data.html;
+      imsgHistory  = data.history  || [];
+      imsgMsgCount = data.msgCount || 0;
+      // Fix receipt timers — mark all as Read since they're restored
+      document.querySelectorAll('.imsg-receipt').forEach(function(r) { r.textContent = 'Read'; });
+      setTimeout(scrollBottom, 100);
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+function imsgClearSession() {
+  localStorage.removeItem(IMSG_SESSION_KEY);
+}
+
+/* ── MESSAGES ────────────────────────────────────────────────── */
+function clearMsgs() {
+  document.getElementById('imsg-msgs').innerHTML = '';
+  imsgMsgCount = 0;
+  imsgHistory  = [];
+  imsgClearSession();
+}
+
+function addDateSep(t) {
+  var el = document.getElementById('imsg-msgs');
+  var d = document.createElement('div');
+  d.className = 'imsg-date-sep';
+  d.textContent = t;
+  el.appendChild(d);
+}
+
+function addMsg(text, type) {
+  var el = document.getElementById('imsg-msgs');
+  var row = document.createElement('div');
+  row.className = 'imsg-row ' + type;
+  imsgMsgCount++;
+
+  var bub = document.createElement('div');
+  bub.className = 'imsg-bubble';
+  bub.textContent = text;
+  row.appendChild(bub);
+
+  var ts = document.createElement('div');
+  ts.className = 'imsg-ts';
+  ts.textContent = imsgTime();
+  row.appendChild(ts);
+
+  if (type === 'sent') {
+    var rec = document.createElement('div');
+    rec.className = 'imsg-receipt';
+    rec.textContent = 'Delivered';
+    row.appendChild(rec);
+    setTimeout(function(){ rec.textContent = 'Read'; }, 2200);
+  }
+
+  el.appendChild(row);
+  scrollBottom();
+  imsgSaveSession();
+}
+
+function addImgMsg(src, type) {
+  var el = document.getElementById('imsg-msgs');
+  var row = document.createElement('div');
+  row.className = 'imsg-row ' + type;
+  imsgMsgCount++;
+
+  var wrap = document.createElement('div');
+  wrap.className = 'imsg-bubble-img';
+  var img = document.createElement('img');
+  img.src = src;
+  img.style.maxWidth = '200px';
+  img.style.borderRadius = '14px';
+  wrap.appendChild(img);
+  row.appendChild(wrap);
+
+  var ts = document.createElement('div');
+  ts.className = 'imsg-ts';
+  ts.textContent = imsgTime();
+  row.appendChild(ts);
+
+  if (type === 'sent') {
+    var rec = document.createElement('div');
+    rec.className = 'imsg-receipt';
+    rec.textContent = 'Delivered';
+    row.appendChild(rec);
+    setTimeout(function(){ rec.textContent = 'Read'; }, 2200);
+  }
+
+  el.appendChild(row);
+  scrollBottom();
+}
+
+function addProductCards(products) {
+  if (!products || !products.length) return;
+  var el = document.getElementById('imsg-msgs');
+  var row = document.createElement('div');
+  row.className = 'imsg-row recv';
+  // Make the row full-width so carousel can extend edge-to-edge
+  row.style.maxWidth = '100%';
+  row.style.width = '100%';
+
+  var wrap = document.createElement('div');
+  wrap.className = 'imsg-product-cards-wrap';
+
+  products.forEach(function(p) {
+    var card = document.createElement('a');
+    card.className = 'imsg-ai-product-card';
+    card.href = p.url || '#';
+    card.target = '_blank';
+    card.rel = 'noopener';
+    // Prevent drag from triggering navigation
+    card.addEventListener('click', function(e) {
+      if (wrap._dragged) { e.preventDefault(); }
+    });
+
+    // ── PRODUCT IMAGE (full-width top) ──
+    var imgEl;
+    if (p.image) {
+      imgEl = document.createElement('img');
+      imgEl.className = 'imsg-pc-img';
+      imgEl.src = p.image;
+      imgEl.alt = p.name || '';
+      imgEl.loading = 'lazy';
+      imgEl.onerror = function() {
+        var ph = document.createElement('div');
+        ph.className = 'imsg-pc-img-placeholder';
+        ph.textContent = '📱';
+        if (imgEl.parentNode) imgEl.parentNode.replaceChild(ph, imgEl);
+      };
+    } else {
+      imgEl = document.createElement('div');
+      imgEl.className = 'imsg-pc-img-placeholder';
+      imgEl.textContent = '📱';
+    }
+    card.appendChild(imgEl);
+
+    // ── BODY ──
+    var body = document.createElement('div');
+    body.className = 'imsg-pc-body';
+
+    if (p.badge) {
+      var badge = document.createElement('div');
+      badge.className = 'imsg-pc-badge';
+      badge.textContent = p.badge;
+      badge.style.color = IMSG.brandColor;
+      body.appendChild(badge);
+    }
+
+    var name = document.createElement('div');
+    name.className = 'imsg-pc-name';
+    name.textContent = p.name;
+    body.appendChild(name);
+
+    var priceRow = document.createElement('div');
+    priceRow.className = 'imsg-pc-price-row';
+    var price = document.createElement('span');
+    price.className = 'imsg-pc-price';
+    price.textContent = p.price;
+    priceRow.appendChild(price);
+    if (p.original_price) {
+      var orig = document.createElement('span');
+      orig.className = 'imsg-pc-original';
+      orig.textContent = p.original_price;
+      priceRow.appendChild(orig);
+    }
+    if (p.discount) {
+      var disc = document.createElement('span');
+      disc.className = 'imsg-pc-discount';
+      disc.textContent = p.discount;
+      priceRow.appendChild(disc);
+    }
+    body.appendChild(priceRow);
+
+    if (p.rating && p.reviews) {
+      var rating = document.createElement('div');
+      rating.className = 'imsg-pc-rating';
+      rating.textContent = '⭐ ' + p.rating + ' (' + p.reviews + ' reviews)';
+      body.appendChild(rating);
+    }
+    card.appendChild(body);
+
+    // ── CTA ──
+    var cta = document.createElement('span');
+    cta.className = 'imsg-pc-cta';
+    cta.textContent = 'Shop →';
+    cta.style.background = IMSG.brandColor;
+    card.appendChild(cta);
+
+    wrap.appendChild(card);
+  });
+
+  // ── MOUSE DRAG-TO-SCROLL (desktop) ──
+  var isDragging = false, startX = 0, scrollLeft = 0;
+  wrap.addEventListener('mousedown', function(e) {
+    isDragging = true;
+    wrap._dragged = false;
+    startX = e.pageX - wrap.offsetLeft;
+    scrollLeft = wrap.scrollLeft;
+    wrap.classList.add('dragging');
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    var x = e.pageX - wrap.offsetLeft;
+    var walk = (x - startX) * 1.2;
+    if (Math.abs(walk) > 4) wrap._dragged = true;
+    wrap.scrollLeft = scrollLeft - walk;
+  });
+  document.addEventListener('mouseup', function() {
+    if (!isDragging) return;
+    isDragging = false;
+    wrap.classList.remove('dragging');
+    setTimeout(function() { wrap._dragged = false; }, 100);
+  });
+
+  row.appendChild(wrap);
+  el.appendChild(row);
+  scrollBottom();
+}
+
+function showTyping(cb, delay) {
+  var el = document.getElementById('imsg-msgs');
+  var row = document.createElement('div');
+  row.className = 'imsg-row recv';
+  row.id = 'imsg-typing-row';
+  var ind = document.createElement('div');
+  ind.className = 'imsg-typing';
+  ind.innerHTML = '<span></span><span></span><span></span>';
+  row.appendChild(ind);
+  el.appendChild(row);
+  scrollBottom();
+  setTimeout(function() {
+    var tr = document.getElementById('imsg-typing-row');
+    if (tr) tr.remove();
+    cb();
+  }, delay || 1400);
+}
+
+/* ── SEND ────────────────────────────────────────────────────────── */
+function imsgSend() {
+  if (imsgTypingLock) return;
+  var inp    = document.getElementById('imsg-textarea');
+  var text   = inp.value.trim();
+  var hasImg = !!imsgPendingImg;
+
+  if (!text && !hasImg) return;
+
+  if (hasImg) {
+    addImgMsg(imsgPendingImg, 'sent');
+    imsgClearImgPreview();
+  }
+  if (text) {
+    addMsg(text, 'sent');
+    inp.value = '';
+    imsgAutoResize(inp);
+    imsgToggleSend();
+    imsgHistory.push({ role: 'user', content: text });
+    imsgAIReply();
+  } else if (hasImg) {
+    imsgHistory.push({ role: 'user', content: '[Customer sent an image]' });
+    imsgAIReply();
+  }
+}
+
+/* ── AI REPLY ENGINE ─────────────────────────────────────────────── */
+function imsgAIReply() {
+  if (imsgTypingLock) return;
+  imsgTypingLock = true;
+
+  // Show typing indicator immediately
+  var el = document.getElementById('imsg-msgs');
+  var typingRow = document.createElement('div');
+  typingRow.className = 'imsg-row recv';
+  typingRow.id = 'imsg-typing-row';
+  var ind = document.createElement('div');
+  ind.className = 'imsg-typing';
+  ind.innerHTML = '<span></span><span></span><span></span>';
+  typingRow.appendChild(ind);
+  el.appendChild(typingRow);
+  scrollBottom();
+
+  // Get current page context (product title, URL) to help the AI
+  var pageCtx = '';
+  try {
+    pageCtx = 'Page: ' + document.title + ' | URL: ' + window.location.href;
+    var metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) pageCtx += ' | ' + metaDesc.getAttribute('content');
+  } catch(e) {}
+
+  var pageType = imsgDetectPageType();
+
+  fetch(IMSG_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: imsgHistory,
+      store_context: pageCtx,
+      page_type: pageType,
+      page_title: document.title || ''
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    var tr = document.getElementById('imsg-typing-row');
+    if (tr) tr.remove();
+
+    var reply = data.reply || "I'm here to help! What can I do for you? 😊";
+    addMsg(reply, 'recv');
+    imsgHistory.push({ role: 'assistant', content: reply });
+    imsgSaveSession();
+
+    // Render product cards if AI returned them
+    if (data.product_cards && data.product_cards.length) {
+      setTimeout(function() { addProductCards(data.product_cards); }, 200);
+    }
+
+    // Update chips dynamically from AI response
+    if (data.chips && data.chips.length) {
+      setTimeout(function() { setQRs(data.chips); }, 300);
+    }
+
+    // Handle escalation
+    if (data.escalate) {
+      setTimeout(function() {
+        addMsg('Connecting you with our support team now... 💙', 'recv');
+      }, 800);
+    }
+
+    imsgTypingLock = false;
+  })
+  .catch(function(err) {
+    var tr = document.getElementById('imsg-typing-row');
+    if (tr) tr.remove();
+    addMsg("Sorry, I'm having a quick connection issue. Email us at support@limitedarmor.com and we'll get back to you right away! 📧", 'recv');
+    imsgTypingLock = false;
+    console.warn('iMsg AI error:', err);
+  });
+}
+
+/* ── QUICK REPLIES / CHIPS ───────────────────────────────────────── */
+function setQRs(replies) {
+  var el = document.getElementById('imsg-qr-bar');
+  // Animate out old chips, animate in new
+  el.style.opacity = '0';
+  setTimeout(function() {
+    el.innerHTML = replies.map(function(r) {
+      return '<button class="imsg-qr-chip" onclick="imsgQR(this)">' + r + '</button>';
+    }).join('');
+    el.style.opacity = '1';
+  }, 150);
+}
+
+function imsgQR(el) {
+  if (imsgTypingLock) return;
+  var text = el.textContent;
+  addMsg(text, 'sent');
+  imsgHistory.push({ role: 'user', content: text });
+  imsgAIReply();
+}
+
+/* ── IMAGE IN MESSAGE ────────────────────────────────────────────── */
+function imsgMsgImgSelected(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    imsgPendingImg = ev.target.result;
+    var thumb = document.getElementById('imsg-img-thumb');
+    thumb.src = imsgPendingImg;
+    document.getElementById('imsg-img-strip').classList.add('visible');
+    document.getElementById('imsg-send-btn').disabled = false;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+
+function imsgClearImgPreview() {
+  imsgPendingImg = null;
+  document.getElementById('imsg-img-strip').classList.remove('visible');
+  document.getElementById('imsg-img-thumb').src = '';
+  imsgToggleSend();
+}
+
+/* ── UPLOAD PANEL ────────────────────────────────────────────────── */
+/* ADMIN ONLY — set agent photo/logo via localStorage, not exposed to customers */
+
+function applyAvatar(src) {
+  // Header avatar
+  var photo = document.getElementById('imsg-avatar-photo');
+  photo.src = src;
+  photo.classList.add('loaded');
+  document.getElementById('imsg-avatar-initials').style.opacity = '0';
+
+  // Launcher logo
+  var launcherLogo = document.getElementById('imsg-launcher-logo');
+  launcherLogo.src = src;
+  launcherLogo.classList.add('loaded');
+  document.getElementById('imsg-launcher-icon').style.opacity = '0';
+}
+
+function applyLogo(src) {
+  var logoImg  = document.getElementById('imsg-brand-logo-img');
+  var logoText = document.getElementById('imsg-brand-logo-text');
+  logoImg.src = src;
+  logoImg.classList.add('loaded');
+  logoText.style.opacity = '0';
+}
+
+
+
+/* ── UTILITIES ───────────────────────────────────────────────────── */
+function scrollBottom() {
+  var el = document.getElementById('imsg-msgs');
+  requestAnimationFrame(function(){ el.scrollTop = el.scrollHeight; });
+}
+function imsgTime() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function imsgHandleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); imsgSend(); }
+}
+function imsgAutoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+function imsgToggleSend() {
+  var hasText = !!document.getElementById('imsg-textarea').value.trim();
+  var hasImg  = !!imsgPendingImg;
+  document.getElementById('imsg-send-btn').disabled = !(hasText || hasImg);
+}
+</script>
+</body>
+</html>
