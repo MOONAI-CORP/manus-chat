@@ -1,0 +1,51 @@
+{% comment %}
+  MOONAI Chat Widget — Limited Armor
+  Paste this snippet into theme.liquid, just before the closing </body> tag.
+  
+  To customize: edit the window.MOONAI_* variables below.
+  No other code changes needed.
+{% endcomment %}
+
+<script>
+  // ── MOONAI Widget Config ──────────────────────────────────────────────────
+  window.MOONAI_STORE_ID      = 'limited_armor';
+  window.MOONAI_API_URL       = 'https://imessage-chat-widget.vercel.app';
+  window.MOONAI_BRAND_COLOR   = '{{ settings.moonai_brand_color | default: "#c9a84c" }}';
+  window.MOONAI_AGENT_NAME    = '{{ settings.moonai_agent_name | default: "Armie" }}';
+  window.MOONAI_AGENT_INITIALS = '{{ settings.moonai_agent_initials | default: "LA" }}';
+  window.MOONAI_AGENT_IMAGE   = '{{ settings.moonai_agent_image | default: "" }}';
+</script>
+
+{% comment %} Load the widget from Vercel CDN {% endcomment %}
+<script>
+(function() {
+  // Inline the widget to avoid extra HTTP request
+  // OR load from CDN:
+  var s = document.createElement('script');
+  s.src = 'https://imessage-chat-widget.vercel.app/chat-widget-v3.html';
+  s.async = true;
+  // Note: since the widget is an HTML file with inline styles/scripts,
+  // we fetch and inject it instead:
+  fetch('https://imessage-chat-widget.vercel.app/chat-widget-v3.html')
+    .then(function(r) { return r.text(); })
+    .then(function(html) {
+      // Extract just the style + widget div + script (skip the comment header)
+      var div = document.createElement('div');
+      div.innerHTML = html;
+      // Inject style
+      var style = div.querySelector('style');
+      if (style) document.head.appendChild(style.cloneNode(true));
+      // Inject widget HTML
+      var widget = div.querySelector('#moonai-widget');
+      if (widget) document.body.appendChild(widget);
+      // Inject script
+      var scripts = div.querySelectorAll('script');
+      scripts.forEach(function(oldScript) {
+        var newScript = document.createElement('script');
+        newScript.textContent = oldScript.textContent;
+        document.body.appendChild(newScript);
+      });
+    })
+    .catch(function(e) { console.warn('MOONAI widget failed to load:', e); });
+})();
+</script>

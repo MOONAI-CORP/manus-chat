@@ -1,0 +1,191 @@
+{% comment %}
+  ═══════════════════════════════════════════════════════════════════════════
+  MOONAI Chat Widget v3 — Shopify Liquid Snippet
+  
+  INSTALLATION:
+  1. Go to Shopify Admin → Online Store → Themes → Edit Code
+  2. Open theme.liquid
+  3. Paste this entire snippet just before the closing </body> tag
+  4. Save
+  
+  CUSTOMIZATION (via Shopify Theme Editor or direct edit):
+  - MOONAI_BRAND_COLOR   : Hex color for the widget accent (default: #c9a84c)
+  - MOONAI_AGENT_NAME    : Name shown in chat header (default: Armie)
+  - MOONAI_AGENT_INITIALS: 2-letter avatar initials (default: LA)
+  - MOONAI_AGENT_IMAGE   : URL to agent profile photo (optional)
+  
+  MULTI-STORE:
+  Change MOONAI_STORE_ID to: limited_armor | cozy_cloud | carbon_conceptz | bagify
+  ═══════════════════════════════════════════════════════════════════════════
+{% endcomment %}
+
+<script>
+  window.MOONAI_STORE_ID       = 'limited_armor';
+  window.MOONAI_API_URL        = 'https://imessage-chat-widget.vercel.app';
+  window.MOONAI_BRAND_COLOR    = '#c9a84c';
+  window.MOONAI_AGENT_NAME     = 'Armie';
+  window.MOONAI_AGENT_INITIALS = 'LA';
+  window.MOONAI_AGENT_IMAGE    = '';
+</script>
+
+<style id="moonai-styles">
+#moonai-widget*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+#moonai-launcher{position:fixed;bottom:24px;right:24px;width:60px;height:60px;border-radius:50%;background:var(--moonai-brand,#c9a84c);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,.35);z-index:99998;transition:transform .2s ease,box-shadow .2s ease}
+#moonai-launcher:hover{transform:scale(1.08);box-shadow:0 6px 28px rgba(0,0,0,.45)}
+#moonai-launcher svg{pointer-events:none}
+#moonai-notif-dot{position:absolute;top:2px;right:2px;width:14px;height:14px;background:#ff3b30;border-radius:50%;border:2px solid #1c1c1e;display:none}
+#moonai-window{position:fixed;bottom:96px;right:24px;width:375px;max-width:calc(100vw - 32px);height:600px;max-height:calc(100vh - 120px);background:#1c1c1e;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08);display:flex;flex-direction:column;overflow:hidden;z-index:99999;transform:translateY(20px) scale(.95);opacity:0;pointer-events:none;transition:transform .25s cubic-bezier(.34,1.56,.64,1),opacity .2s ease}
+#moonai-window.open{transform:translateY(0) scale(1);opacity:1;pointer-events:all}
+#moonai-header{display:flex;align-items:center;gap:12px;padding:14px 16px;background:#2c2c2e;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
+#moonai-avatar{width:40px;height:40px;border-radius:50%;background:var(--moonai-brand,#c9a84c);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden}
+#moonai-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+#moonai-header-info{flex:1;min-width:0}
+#moonai-agent-name{font-size:15px;font-weight:600;color:#fff;line-height:1.2}
+#moonai-status{font-size:12px;color:#30d158;display:flex;align-items:center;gap:4px;margin-top:1px}
+#moonai-status::before{content:'';width:6px;height:6px;background:#30d158;border-radius:50%;display:inline-block}
+#moonai-close-btn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.1);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#ebebf5;transition:background .15s;flex-shrink:0}
+#moonai-close-btn:hover{background:rgba(255,255,255,.18)}
+#moonai-messages{flex:1;overflow-y:auto;padding:16px 12px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
+#moonai-messages::-webkit-scrollbar{width:4px}
+#moonai-messages::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
+.moonai-msg-row{display:flex;align-items:flex-end;gap:8px;animation:moonai-fade-in .2s ease}
+.moonai-msg-row.user{flex-direction:row-reverse}
+@keyframes moonai-fade-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.moonai-msg-avatar{width:28px;height:28px;border-radius:50%;background:var(--moonai-brand,#c9a84c);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden}
+.moonai-msg-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.moonai-msg-row.user .moonai-msg-avatar{display:none}
+.moonai-bubble{max-width:78%;padding:10px 14px;border-radius:18px;font-size:15px;line-height:1.45;word-break:break-word}
+.moonai-msg-row.agent .moonai-bubble{background:#2c2c2e;color:#f5f5f7;border-bottom-left-radius:4px}
+.moonai-msg-row.user .moonai-bubble{background:var(--moonai-brand,#c9a84c);color:#fff;border-bottom-right-radius:4px}
+#moonai-typing{display:none;align-items:flex-end;gap:8px;padding:0 0 4px}
+#moonai-typing.visible{display:flex}
+.moonai-typing-dots{background:#2c2c2e;border-radius:18px;border-bottom-left-radius:4px;padding:12px 16px;display:flex;gap:4px;align-items:center}
+.moonai-typing-dots span{width:6px;height:6px;background:#8e8e93;border-radius:50%;animation:moonai-bounce 1.2s infinite}
+.moonai-typing-dots span:nth-child(2){animation-delay:.2s}
+.moonai-typing-dots span:nth-child(3){animation-delay:.4s}
+@keyframes moonai-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+.moonai-cards-row{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.moonai-cards-row::-webkit-scrollbar{display:none}
+.moonai-card{flex:0 0 160px;background:#2c2c2e;border-radius:14px;overflow:hidden;scroll-snap-align:start;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease;text-decoration:none;display:block;border:1px solid rgba(255,255,255,.06)}
+.moonai-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.moonai-card-img-wrap{position:relative;width:100%;padding-top:100%;background:#3a3a3c;overflow:hidden}
+.moonai-card-img-wrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.moonai-card-img-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#636366;font-size:32px}
+.moonai-card-badge{position:absolute;top:8px;left:8px;background:var(--moonai-brand,#c9a84c);color:#fff;font-size:10px;font-weight:700;padding:3px 7px;border-radius:6px;text-transform:uppercase;letter-spacing:.3px}
+.moonai-card-info{padding:10px 10px 12px}
+.moonai-card-title{font-size:12px;font-weight:600;color:#f5f5f7;line-height:1.35;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.moonai-card-prices{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.moonai-card-price{font-size:14px;font-weight:700;color:#fff}
+.moonai-card-compare{font-size:12px;color:#636366;text-decoration:line-through}
+.moonai-card-cta{display:block;margin:8px 10px 10px;background:var(--moonai-brand,#c9a84c);color:#fff;text-align:center;font-size:12px;font-weight:600;padding:7px 0;border-radius:8px;text-decoration:none;transition:opacity .15s}
+.moonai-card-cta:hover{opacity:.88}
+.moonai-cta-btn{display:inline-flex;align-items:center;gap:6px;background:var(--moonai-brand,#c9a84c);color:#fff;font-size:14px;font-weight:600;padding:10px 18px;border-radius:12px;text-decoration:none;margin-top:6px;transition:opacity .15s}
+.moonai-cta-btn:hover{opacity:.88}
+#moonai-chips{display:flex;gap:8px;flex-wrap:wrap;padding:8px 12px 4px;flex-shrink:0}
+.moonai-chip{background:#2c2c2e;border:1px solid rgba(255,255,255,.12);color:#f5f5f7;font-size:13px;font-weight:500;padding:8px 14px;border-radius:20px;cursor:pointer;transition:background .15s,border-color .15s,transform .1s;white-space:nowrap;flex-shrink:0}
+.moonai-chip:hover{background:#3a3a3c;border-color:var(--moonai-brand,#c9a84c);transform:translateY(-1px)}
+.moonai-chip:active{transform:scale(.97)}
+#moonai-input-area{display:flex;align-items:center;gap:8px;padding:10px 12px 14px;background:#1c1c1e;border-top:1px solid rgba(255,255,255,.06);flex-shrink:0}
+#moonai-input{flex:1;background:#2c2c2e;border:1px solid rgba(255,255,255,.1);border-radius:22px;padding:10px 16px;font-size:15px;color:#f5f5f7;outline:none;transition:border-color .15s;resize:none;min-height:40px;max-height:100px;overflow-y:auto;line-height:1.4}
+#moonai-input::placeholder{color:#636366}
+#moonai-input:focus{border-color:var(--moonai-brand,#c9a84c)}
+#moonai-send-btn{width:36px;height:36px;border-radius:50%;background:var(--moonai-brand,#c9a84c);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s,transform .1s}
+#moonai-send-btn:hover{opacity:.88;transform:scale(1.05)}
+#moonai-send-btn:active{transform:scale(.95)}
+#moonai-send-btn svg{pointer-events:none}
+#moonai-proactive{position:fixed;bottom:96px;right:24px;max-width:280px;background:#2c2c2e;border-radius:16px;border-bottom-right-radius:4px;padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:99997;cursor:pointer;animation:moonai-slide-up .35s cubic-bezier(.34,1.56,.64,1);border:1px solid rgba(255,255,255,.08)}
+@keyframes moonai-slide-up{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+#moonai-proactive-text{font-size:14px;color:#f5f5f7;line-height:1.45;margin-bottom:10px}
+#moonai-proactive-chips{display:flex;flex-direction:column;gap:6px}
+.moonai-proactive-chip{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);color:#f5f5f7;font-size:13px;font-weight:500;padding:7px 12px;border-radius:10px;cursor:pointer;transition:background .15s;text-align:left}
+.moonai-proactive-chip:hover{background:rgba(255,255,255,.14)}
+#moonai-proactive-dismiss{position:absolute;top:8px;right:10px;background:none;border:none;color:#636366;font-size:16px;cursor:pointer;line-height:1;padding:2px}
+@media(max-width:480px){#moonai-window{bottom:0;right:0;left:0;width:100%;max-width:100%;height:100%;max-height:100%;border-radius:0}#moonai-launcher{bottom:16px;right:16px}#moonai-proactive{bottom:88px;right:16px;left:16px;max-width:none}}
+</style>
+
+<div id="moonai-widget">
+  <div id="moonai-proactive" style="display:none">
+    <button id="moonai-proactive-dismiss" aria-label="Dismiss">×</button>
+    <div id="moonai-proactive-text"></div>
+    <div id="moonai-proactive-chips"></div>
+  </div>
+  <button id="moonai-launcher" aria-label="Chat with us">
+    <div id="moonai-notif-dot"></div>
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none"><path d="M13 2C6.925 2 2 6.477 2 12c0 2.14.69 4.12 1.86 5.74L2.5 22.5l5.1-1.32A10.9 10.9 0 0013 22c6.075 0 11-4.477 11-10S19.075 2 13 2z" fill="white"/></svg>
+  </button>
+  <div id="moonai-window" role="dialog" aria-label="Chat">
+    <div id="moonai-header">
+      <div id="moonai-avatar"><span id="moonai-avatar-initials">LA</span></div>
+      <div id="moonai-header-info">
+        <div id="moonai-agent-name">Armie</div>
+        <div id="moonai-status">Online now</div>
+      </div>
+      <button id="moonai-close-btn" aria-label="Close chat">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="#ebebf5" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div id="moonai-messages">
+      <div id="moonai-typing">
+        <div class="moonai-msg-avatar" id="moonai-typing-avatar">LA</div>
+        <div class="moonai-typing-dots"><span></span><span></span><span></span></div>
+      </div>
+    </div>
+    <div id="moonai-chips"></div>
+    <div id="moonai-input-area">
+      <textarea id="moonai-input" placeholder="Message..." rows="1" aria-label="Type a message"></textarea>
+      <button id="moonai-send-btn" aria-label="Send">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14.5 1.5L7 9M14.5 1.5L10 14.5L7 9M14.5 1.5L1.5 6L7 9" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+var CFG={storeId:(window.MOONAI_STORE_ID||'limited_armor'),apiUrl:(window.MOONAI_API_URL||'https://imessage-chat-widget.vercel.app'),brandColor:(window.MOONAI_BRAND_COLOR||'#c9a84c'),agentName:(window.MOONAI_AGENT_NAME||'Armie'),agentInitials:(window.MOONAI_AGENT_INITIALS||'LA'),agentImage:(window.MOONAI_AGENT_IMAGE||''),proactiveDelay:4000,proactiveScrollPct:40};
+var SESSION_KEY='moonai_session_'+CFG.storeId;
+var state=loadSession();
+function loadSession(){try{var raw=sessionStorage.getItem(SESSION_KEY);if(raw){var s=JSON.parse(raw);if(s.storeId===CFG.storeId)return s;}}catch(e){}return{storeId:CFG.storeId,phase:'open',knownAttributes:{},messages:[],isOpen:false,proactiveShown:false,upsellShown:false};}
+function saveSession(){try{sessionStorage.setItem(SESSION_KEY,JSON.stringify(state));}catch(e){}}
+function getPageContext(){var path=window.location.pathname,pageType='homepage',productTitle='';if(path.includes('/products/'))pageType='product';else if(path.includes('/collections/'))pageType='collection';else if(path.includes('/cart'))pageType='cart';if(pageType==='product'){var h1=document.querySelector('h1');if(h1)productTitle=h1.textContent.trim();}var cartPresent=false;try{var cc=document.querySelector('[data-cart-count],.cart-count,#cart-count');if(cc&&parseInt(cc.textContent)>0)cartPresent=true;}catch(e){}return{pageType:pageType,pageTitle:productTitle||document.title,currentUrl:window.location.href,cartPresent:cartPresent};}
+var $launcher=document.getElementById('moonai-launcher'),$window=document.getElementById('moonai-window'),$messages=document.getElementById('moonai-messages'),$chips=document.getElementById('moonai-chips'),$input=document.getElementById('moonai-input'),$sendBtn=document.getElementById('moonai-send-btn'),$closeBtn=document.getElementById('moonai-close-btn'),$typing=document.getElementById('moonai-typing'),$proactive=document.getElementById('moonai-proactive'),$proText=document.getElementById('moonai-proactive-text'),$proChips=document.getElementById('moonai-proactive-chips'),$proDismiss=document.getElementById('moonai-proactive-dismiss'),$notifDot=document.getElementById('moonai-notif-dot'),$agentName=document.getElementById('moonai-agent-name'),$avatarInitials=document.getElementById('moonai-avatar-initials'),$typingAvatar=document.getElementById('moonai-typing-avatar');
+document.documentElement.style.setProperty('--moonai-brand',CFG.brandColor);
+$agentName.textContent=CFG.agentName;
+$avatarInitials.textContent=CFG.agentInitials;
+$typingAvatar.textContent=CFG.agentInitials;
+if(CFG.agentImage){document.getElementById('moonai-avatar').innerHTML='<img src="'+CFG.agentImage+'" alt="'+CFG.agentName+'">';}
+fetch(CFG.apiUrl+'/config/'+CFG.storeId).then(function(r){return r.json();}).then(function(cfg){document.documentElement.style.setProperty('--moonai-brand',cfg.brand_color||CFG.brandColor);$agentName.textContent=cfg.agent_name||CFG.agentName;$avatarInitials.textContent=cfg.agent_initials||CFG.agentInitials;$typingAvatar.textContent=cfg.agent_initials||CFG.agentInitials;}).catch(function(){});
+function openChat(){$window.classList.add('open');state.isOpen=true;$notifDot.style.display='none';hideProactive();saveSession();if(state.messages.length===0){triggerGreeting();}else{$messages.innerHTML='';state.messages.forEach(function(msg){if(msg.type==='agent')renderAgentMessage(msg.text,msg.products,msg.cta,false);else if(msg.type==='user')renderUserMessage(msg.text,false);});renderChips(state.chips||[]);scrollToBottom();}setTimeout(function(){$input.focus();},300);}
+function closeChat(){$window.classList.remove('open');state.isOpen=false;saveSession();}
+$launcher.addEventListener('click',function(){if($window.classList.contains('open'))closeChat();else openChat();});
+$closeBtn.addEventListener('click',closeChat);
+function renderUserMessage(text,save){if(save===undefined)save=true;var row=document.createElement('div');row.className='moonai-msg-row user';row.innerHTML='<div class="moonai-bubble">'+escHtml(text)+'</div>';$messages.insertBefore(row,$typing);scrollToBottom();if(save){state.messages.push({type:'user',text:text});saveSession();}}
+function renderAgentMessage(text,products,cta,save){if(save===undefined)save=true;var row=document.createElement('div');row.className='moonai-msg-row agent';var av=CFG.agentImage?'<div class="moonai-msg-avatar"><img src="'+CFG.agentImage+'" alt="'+CFG.agentName+'"></div>':'<div class="moonai-msg-avatar">'+CFG.agentInitials+'</div>';row.innerHTML=av+'<div class="moonai-bubble">'+escHtml(text)+'</div>';$messages.insertBefore(row,$typing);if(products&&products.length>0){var cr=document.createElement('div');cr.className='moonai-msg-row agent';cr.innerHTML=av+'<div style="flex:1;min-width:0">'+renderProductCards(products)+'</div>';$messages.insertBefore(cr,$typing);}if(cta&&cta.url&&cta.label){var ctaRow=document.createElement('div');ctaRow.className='moonai-msg-row agent';ctaRow.innerHTML=av+'<a class="moonai-cta-btn" href="'+escAttr(cta.url)+'" target="_blank" rel="noopener">'+escHtml(cta.label)+' →</a>';$messages.insertBefore(ctaRow,$typing);}scrollToBottom();if(save){state.messages.push({type:'agent',text:text,products:products,cta:cta});saveSession();}}
+function renderProductCards(products){if(!products||!products.length)return'';var html='<div class="moonai-cards-row">';products.forEach(function(p){var img=p.image?'<img src="'+escAttr(p.image)+'" alt="'+escAttr(p.title)+'" loading="lazy">':'<div class="moonai-card-img-placeholder">📦</div>';var badge=p.badge?'<div class="moonai-card-badge">'+escHtml(p.badge)+'</div>':'';var compare=p.compareAtPrice?'<span class="moonai-card-compare">'+escHtml(p.compareAtPrice)+'</span>':'';html+='<a class="moonai-card" href="'+escAttr(p.url)+'" target="_blank" rel="noopener"><div class="moonai-card-img-wrap">'+img+badge+'</div><div class="moonai-card-info"><div class="moonai-card-title">'+escHtml(p.title)+'</div><div class="moonai-card-prices"><span class="moonai-card-price">'+escHtml(p.price)+'</span>'+compare+'</div></div><span class="moonai-card-cta">Shop Now</span></a>';});html+='</div>';return html;}
+function renderChips(chips){$chips.innerHTML='';if(!chips||!chips.length)return;chips.forEach(function(chip){var btn=document.createElement('button');btn.className='moonai-chip';btn.textContent=chip.label;btn.dataset.chipId=chip.id;btn.addEventListener('click',function(){handleChip(chip.id,chip.label);});$chips.appendChild(btn);});if(chips.length){state.chips=chips;saveSession();}}
+function showTyping(){$typing.classList.add('visible');$messages.insertBefore($typing,null);scrollToBottom();}
+function hideTyping(){$typing.classList.remove('visible');}
+function scrollToBottom(){requestAnimationFrame(function(){$messages.scrollTop=$messages.scrollHeight;});}
+function sendToApi(message,callback){var ctx=getPageContext();fetch(CFG.apiUrl+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({store_id:CFG.storeId,message:message,current_phase:state.phase,known_attributes:state.knownAttributes,page_type:ctx.pageType,page_title:ctx.pageTitle,upsell_shown:state.upsellShown})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(d){callback(null,d);}).catch(function(e){callback(e,null);});}
+function handleSend(text){text=text.trim();if(!text)return;$input.value='';$input.style.height='auto';$chips.innerHTML='';renderUserMessage(text);showTyping();$input.disabled=true;$sendBtn.disabled=true;sendToApi(text,function(err,data){hideTyping();$input.disabled=false;$sendBtn.disabled=false;$input.focus();if(err||!data){renderAgentMessage("Sorry, I'm having a moment. Try again in a second!",[],null);return;}state.phase=data.phase||state.phase;state.knownAttributes=data.knownAttributes||state.knownAttributes;if(data.phase==='upsell')state.upsellShown=true;saveSession();renderAgentMessage(data.message,data.productCards,data.cta);renderChips(data.chips);});}
+function handleChip(chipId,chipLabel){$chips.innerHTML='';renderUserMessage(chipLabel);showTyping();$input.disabled=true;$sendBtn.disabled=true;sendToApi(chipId,function(err,data){hideTyping();$input.disabled=false;$sendBtn.disabled=false;if(err||!data){renderAgentMessage("Sorry, something went wrong. Try again!",[],null);return;}state.phase=data.phase||state.phase;state.knownAttributes=data.knownAttributes||state.knownAttributes;if(data.phase==='upsell')state.upsellShown=true;saveSession();renderAgentMessage(data.message,data.productCards,data.cta);renderChips(data.chips);});}
+function triggerGreeting(){var ctx=getPageContext();showTyping();fetch(CFG.apiUrl+'/proactive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({store_id:CFG.storeId,page_type:ctx.pageType,page_title:ctx.pageTitle,is_return_visitor:isReturnVisitor(),cart_present:ctx.cartPresent})}).then(function(r){return r.json();}).then(function(data){hideTyping();renderAgentMessage(data.message,[],null);renderChips(data.chips);state.phase=data.phase||'open';saveSession();}).catch(function(){hideTyping();renderAgentMessage('Hey! Welcome — I\'m '+CFG.agentName+', your personal stylist. What phone do you have?',[],null);renderChips([{id:'shop_now',label:'Shop now'},{id:'see_sale',label:'See sale'},{id:'need_help',label:'Help me choose'}]);});}
+function showProactive(message,chips){if(state.proactiveShown||state.isOpen)return;state.proactiveShown=true;saveSession();$proText.textContent=message;$proChips.innerHTML='';chips.forEach(function(chip){var btn=document.createElement('button');btn.className='moonai-proactive-chip';btn.textContent=chip.label;btn.addEventListener('click',function(){hideProactive();openChat();setTimeout(function(){handleChip(chip.id,chip.label);},400);});$proChips.appendChild(btn);});$proactive.style.display='block';$notifDot.style.display='block';$proText.addEventListener('click',function(){hideProactive();openChat();});}
+function hideProactive(){$proactive.style.display='none';$notifDot.style.display='none';}
+$proDismiss.addEventListener('click',function(e){e.stopPropagation();hideProactive();});
+function initProactiveTriggers(){if(state.proactiveShown||state.isOpen)return;var ctx=getPageContext();function fetchAndShow(){if(state.proactiveShown||state.isOpen)return;fetch(CFG.apiUrl+'/proactive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({store_id:CFG.storeId,page_type:ctx.pageType,page_title:ctx.pageTitle,is_return_visitor:isReturnVisitor(),cart_present:ctx.cartPresent})}).then(function(r){return r.json();}).then(function(data){showProactive(data.message,data.chips||[]);}).catch(function(){});}
+setTimeout(fetchAndShow,CFG.proactiveDelay);
+var scrollTriggered=false;window.addEventListener('scroll',function(){if(scrollTriggered||state.proactiveShown||state.isOpen)return;var pct=(window.scrollY/(document.body.scrollHeight-window.innerHeight))*100;if(pct>=CFG.proactiveScrollPct){scrollTriggered=true;fetchAndShow();}},{passive:true});
+if(window.innerWidth>480){document.addEventListener('mouseleave',function(e){if(e.clientY<10&&!state.proactiveShown&&!state.isOpen)fetchAndShow();});}}
+function isReturnVisitor(){try{var key='moonai_visited_'+CFG.storeId,v=localStorage.getItem(key);localStorage.setItem(key,Date.now().toString());return!!v;}catch(e){return false;}}
+function escHtml(str){if(!str)return'';return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function escAttr(str){return escHtml(str);}
+$sendBtn.addEventListener('click',function(){handleSend($input.value);});
+$input.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend($input.value);}});
+$input.addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px';});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&$window.classList.contains('open'))closeChat();});
+if(state.isOpen)openChat();
+initProactiveTriggers();
+})();
+</script>
